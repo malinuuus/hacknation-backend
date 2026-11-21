@@ -1,7 +1,7 @@
-import type { CaseDetailRecord, CaseSummaryRecord } from './cases.repository.js';
-import { formatDateOnly } from './domain/date-only.js';
-import { computeUrgency } from './domain/urgency.js';
-import type { CaseDetailDto, CaseSummaryDto } from './dto/case-response.dto.js';
+import type { CaseDetailRecord, CaseSummaryRecord } from '../cases.repository.js';
+import { formatDateOnly } from '../helpers/date-only.helper.js';
+import { computeUrgency } from '../helpers/urgency.helper.js';
+import type { CaseDetailDto, CaseSummaryDto } from '../dto/case-response.dto.js';
 
 const formatOptional = (date: Date | null): string | null => (date ? formatDateOnly(date) : null);
 

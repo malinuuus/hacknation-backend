@@ -1,4 +1,4 @@
-import { formatCaseNumber, sequenceNumberFromCaseNumber } from './case-number.js';
+import { formatCaseNumber, sequenceNumberFromCaseNumber } from './case-number.helper.js';
 
 describe('case numbers', () => {
   it('formats prefix, sequence and year', () => {

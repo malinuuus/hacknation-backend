@@ -1,5 +1,5 @@
-import { addDays, addMonths } from './date-only.js';
-import { isPolishPublicHoliday } from './polish-holidays.js';
+import { addDays, addMonths } from './date-only.helper.js';
+import { isPolishPublicHoliday } from './polish-holidays.helper.js';
 
 /** Art. 13 ust. 1 UDIP: respond no later than 14 days from receipt. */
 export const STATUTORY_RESPONSE_DAYS = 14;

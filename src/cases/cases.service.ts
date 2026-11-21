@@ -1,12 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AuthUser } from '../auth/auth-user.js';
+import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import type { EnvironmentVariables } from '../config/environment/environment-variables.validation.js';
-import { toCaseDetailDto, toCaseSummaryDto } from './case.mapper.js';
+import { toCaseDetailDto, toCaseSummaryDto } from './mappers/case.mapper.js';
 import { CasesRepository } from './cases.repository.js';
-import { formatCaseNumber, sequenceNumberFromCaseNumber } from './domain/case-number.js';
-import { parseDateOnly, todayInOfficeTimeZone } from './domain/date-only.js';
-import { computeDueDate } from './domain/deadline.js';
+import { formatCaseNumber, sequenceNumberFromCaseNumber } from './helpers/case-number.helper.js';
+import { parseDateOnly, todayInOfficeTimeZone } from './helpers/date-only.helper.js';
+import { computeDueDate } from './helpers/deadline.helper.js';
 import type { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import type { CreateCaseDto } from './dto/create-case.dto.js';
 import type { ListCasesQueryDto } from './dto/list-cases-query.dto.js';

@@ -1,26 +1,8 @@
 import { CaseStatus } from '../../generated/prisma/enums.js';
-import { daysBetween } from './date-only.js';
-
-export enum CaseUrgency {
-  Done = 'DONE',
-  Overdue = 'OVERDUE',
-  DueToday = 'DUE_TODAY',
-  DueTomorrow = 'DUE_TOMORROW',
-  Upcoming = 'UPCOMING',
-}
-
-export interface CaseDeadlineFields {
-  status: CaseStatus;
-  dueAt: Date;
-  extendedDueAt: Date | null;
-}
-
-export interface CaseUrgencyInfo {
-  effectiveDueAt: Date;
-  /** Days until the effective deadline; negative when overdue. */
-  daysLeft: number;
-  urgency: CaseUrgency;
-}
+import { CaseUrgency } from '../enums/case-urgency.enum.js';
+import type { CaseDeadlineFields } from '../interfaces/case-deadline-fields.interface.js';
+import type { CaseUrgencyInfo } from '../interfaces/case-urgency-info.interface.js';
+import { daysBetween } from './date-only.helper.js';
 
 export function effectiveDueDate(fields: Pick<CaseDeadlineFields, 'dueAt' | 'extendedDueAt'>): Date {
   return fields.extendedDueAt ?? fields.dueAt;

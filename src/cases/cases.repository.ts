@@ -5,6 +5,9 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AssigneeNotFoundError } from './errors/assignee-not-found.error.js';
 import { CaseNumberTakenError } from './errors/case-number-taken.error.js';
 import { SequenceNumberTakenError } from './errors/sequence-number-taken.error.js';
+import type { CaseListFilter } from './interfaces/case-list-filter.interface.js';
+import type { CaseListResult } from './interfaces/case-list-result.interface.js';
+import type { CreateCaseData } from './interfaces/create-case-data.interface.js';
 
 const userRef = { select: { id: true, email: true } } as const;
 
@@ -18,33 +21,6 @@ const detailInclude = {
 
 export type CaseSummaryRecord = Prisma.CaseGetPayload<{ include: typeof summaryInclude }>;
 export type CaseDetailRecord = Prisma.CaseGetPayload<{ include: typeof detailInclude }>;
-
-export interface CreateCaseData {
-  year: number;
-  /** Explicit sequence number; the next free one of the year when omitted. */
-  sequenceNumber?: number;
-  /** Explicit case number, or a function building one from the assigned sequence number. */
-  caseNumber: string | ((sequenceNumber: number) => string);
-  subject: string;
-  receivedAt: Date;
-  dueAt: Date;
-  handlerInitials?: string;
-  assigneeId?: string;
-  requesterName?: string;
-  requesterEmail?: string;
-  requesterAddress?: string;
-  notes?: string;
-  createdById: string;
-}
-
-export interface CaseListFilter {
-  year: number;
-  status?: CaseStatus;
-  assigneeId?: string;
-  search?: string;
-  limit: number;
-  offset: number;
-}
 
 /** Concurrent creates can race for the same sequence number; retry a few times. */
 const MAX_SEQUENCE_ATTEMPTS = 3;
@@ -106,7 +82,7 @@ export class CasesRepository {
     }
   }
 
-  async findMany(filter: CaseListFilter): Promise<{ items: CaseSummaryRecord[]; total: number }> {
+  async findMany(filter: CaseListFilter): Promise<CaseListResult> {
     const where: Prisma.CaseWhereInput = {
       year: filter.year,
       status: filter.status,

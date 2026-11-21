@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CaseStatus } from '../../generated/prisma/enums.js';
-import { CaseUrgency } from '../domain/urgency.js';
+import { CaseUrgency } from '../enums/case-urgency.enum.js';
 
 export class UserRefDto {
   @ApiProperty({ format: 'uuid' })

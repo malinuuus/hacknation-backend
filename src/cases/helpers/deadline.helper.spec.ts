@@ -1,6 +1,6 @@
-import { addMonths, formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './date-only.js';
-import { computeDueDate, maxExtendedDueDate } from './deadline.js';
-import { easterSunday, isPolishPublicHoliday } from './polish-holidays.js';
+import { addMonths, formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './date-only.helper.js';
+import { computeDueDate, maxExtendedDueDate } from './deadline.helper.js';
+import { easterSunday, isPolishPublicHoliday } from './polish-holidays.helper.js';
 
 const d = parseDateOnly;
 const fmt = formatDateOnly;

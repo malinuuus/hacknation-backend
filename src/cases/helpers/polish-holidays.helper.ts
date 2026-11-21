@@ -1,4 +1,4 @@
-import { addDays, dateOnly, formatDateOnly } from './date-only.js';
+import { addDays, dateOnly, formatDateOnly } from './date-only.helper.js';
 
 /** Easter Sunday (Gregorian calendar), anonymous Gregorian algorithm. */
 export function easterSunday(year: number): Date {

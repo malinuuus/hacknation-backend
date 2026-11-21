@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import type { User } from '../generated/prisma/client.js';
 import { UserAlreadyExistsError } from '../users/errors/user-already-exists.error.js';
 import { UsersRepository } from '../users/users.repository.js';
-import type { JwtPayload } from './auth-user.js';
+import type { JwtPayload } from './interfaces/jwt-payload.interface.js';
 import type { AuthResponseDto } from './dto/auth-response.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';

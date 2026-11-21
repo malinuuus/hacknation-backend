@@ -1,13 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { DepartmentDto } from '../../departments/dto/department-response.dto.js';
 import { CaseStatus } from '../../generated/prisma/enums.js';
 import { CaseUrgency } from '../enums/case-urgency.enum.js';
+import { CaseDocumentDto } from './case-document-response.dto.js';
+import { UserRefDto } from './user-ref.dto.js';
 
-export class UserRefDto {
-  @ApiProperty({ format: 'uuid' })
-  id: string;
+export class CaseDepartmentRefDto {
+  @ApiProperty({ example: 'WIM' })
+  symbol: string;
 
-  @ApiProperty({ format: 'email' })
-  email: string;
+  @ApiProperty({ description: 'Whether the department has replied' })
+  answered: boolean;
+}
+
+export class CaseDepartmentDto {
+  @ApiProperty({ type: DepartmentDto })
+  department: DepartmentDto;
+
+  @ApiProperty({ format: 'date' })
+  requestedAt: string;
+
+  @ApiPropertyOptional({ format: 'date', nullable: true, description: 'null while waiting for the reply' })
+  answeredAt: string | null;
 }
 
 /** One row of the case register ("kalendarz wniosków"). */
@@ -56,6 +70,9 @@ export class CaseSummaryDto {
 
   @ApiPropertyOptional({ type: UserRefDto, nullable: true })
   assignee: UserRefDto | null;
+
+  @ApiProperty({ type: [CaseDepartmentRefDto], description: 'Departments asked for information' })
+  departments: CaseDepartmentRefDto[];
 }
 
 export class CaseListResponseDto {
@@ -108,8 +125,25 @@ export class CaseDetailDto extends CaseSummaryDto {
   @ApiProperty({ format: 'date-time' })
   updatedAt: Date;
 
+  @ApiProperty({ type: [CaseDepartmentDto], description: 'Departments asked for information, with dates' })
+  departmentRequests: CaseDepartmentDto[];
+
+  @ApiProperty({ type: [CaseDocumentDto], description: 'Attached files, oldest first' })
+  documents: CaseDocumentDto[];
+
   @ApiProperty({ type: [CaseStatusChangeDto], description: 'Oldest first' })
   statusHistory: CaseStatusChangeDto[];
+
+  @ApiProperty({
+    enum: CaseStatus,
+    enumName: 'CaseStatus',
+    isArray: true,
+    description: 'Statuses the case can move to next (EXTENDED goes through the extension endpoint)',
+  })
+  allowedStatuses: CaseStatus[];
+
+  @ApiProperty({ format: 'date', description: 'Latest date the deadline can be extended to' })
+  maxExtendedDueAt: string;
 }
 
 export class CaseYearsResponseDto {

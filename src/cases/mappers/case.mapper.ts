@@ -1,6 +1,10 @@
+import { toDepartmentDto } from '../../departments/mappers/department.mapper.js';
 import type { CaseDetailRecord, CaseSummaryRecord } from '../cases.repository.js';
+import { allowedTransitions } from '../helpers/case-status.helper.js';
 import { formatDateOnly } from '../helpers/date-only.helper.js';
+import { maxExtendedDueDate } from '../helpers/deadline.helper.js';
 import { computeUrgency } from '../helpers/urgency.helper.js';
+import { toCaseDocumentDto } from './case-document.mapper.js';
 import type { CaseDetailDto, CaseSummaryDto } from '../dto/case-response.dto.js';
 
 const formatOptional = (date: Date | null): string | null => (date ? formatDateOnly(date) : null);
@@ -24,6 +28,10 @@ export function toCaseSummaryDto(record: CaseSummaryRecord, today: Date): CaseSu
     respondedAt: formatOptional(record.respondedAt),
     handlerInitials: record.handlerInitials,
     assignee: record.assignee,
+    departments: record.departments.map((link) => ({
+      symbol: link.department.symbol,
+      answered: link.answeredAt !== null,
+    })),
   };
 }
 
@@ -35,6 +43,12 @@ export function toCaseDetailDto(record: CaseDetailRecord, today: Date): CaseDeta
     requesterEmail: record.requesterEmail,
     requesterAddress: record.requesterAddress,
     notes: record.notes,
+    departmentRequests: record.departments.map((link) => ({
+      department: toDepartmentDto(link.department),
+      requestedAt: formatDateOnly(link.requestedAt),
+      answeredAt: formatOptional(link.answeredAt),
+    })),
+    documents: record.documents.map(toCaseDocumentDto),
     createdBy: record.createdBy,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -45,5 +59,7 @@ export function toCaseDetailDto(record: CaseDetailRecord, today: Date): CaseDeta
       changedBy: change.changedBy,
       createdAt: change.createdAt,
     })),
+    allowedStatuses: [...allowedTransitions(record.status)],
+    maxExtendedDueAt: formatDateOnly(maxExtendedDueDate(record.receivedAt)),
   };
 }

@@ -3,5 +3,5 @@ saveExact: true
 allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': true
-  argon2: true
+  bcrypt: true
   prisma: true

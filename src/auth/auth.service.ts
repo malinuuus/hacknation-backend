@@ -1,76 +1,54 @@
-import {
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as argon2 from 'argon2';
-import { Prisma } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import bcrypt from 'bcrypt';
+import type { User } from '../generated/prisma/client.js';
+import { UserAlreadyExistsError } from '../users/errors/user-already-exists.error.js';
+import { UsersRepository } from '../users/users.repository.js';
+import type { AuthResponseDto } from './dto/auth-response.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
 
-export interface AuthResponse {
-  accessToken: string;
-  user: { id: string; email: string };
-}
+const BCRYPT_SALT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
-  // Verified against when the email is unknown, so a login attempt takes
+  // Compared against when the email is unknown, so a login attempt takes
   // about the same time whether or not the account exists.
-  private readonly dummyHash = argon2.hash('dummy-password-for-timing');
+  private readonly dummyHash = bcrypt.hash('dummy-password-for-timing', BCRYPT_SALT_ROUNDS);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwt: JwtService,
+    private readonly usersRepository: UsersRepository,
+    private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<AuthResponse> {
-    const passwordHash = await argon2.hash(dto.password);
+  async register(dto: RegisterDto): Promise<AuthResponseDto> {
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
 
     try {
-      const user = await this.prisma.user.create({
-        data: { email: dto.email, passwordHash },
-        select: { id: true, email: true },
-      });
+      const user = await this.usersRepository.create({ email: dto.email, passwordHash });
       return this.buildResponse(user);
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if (error instanceof UserAlreadyExistsError) {
         throw new ConflictException('Email is already registered');
       }
       throw error;
     }
   }
 
-  async login(dto: LoginDto): Promise<AuthResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+  async login(dto: LoginDto): Promise<AuthResponseDto> {
+    const user = await this.usersRepository.findByEmail(dto.email);
 
-    const passwordValid = await argon2.verify(
-      user?.passwordHash ?? (await this.dummyHash),
-      dto.password,
-    );
+    const passwordValid = await bcrypt.compare(dto.password, user?.passwordHash ?? (await this.dummyHash));
 
     if (!user || !passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.buildResponse({ id: user.id, email: user.email });
+    return this.buildResponse(user);
   }
 
-  private async buildResponse(user: {
-    id: string;
-    email: string;
-  }): Promise<AuthResponse> {
-    const accessToken = await this.jwt.signAsync({
-      sub: user.id,
-      email: user.email,
-    });
-    return { accessToken, user };
+  private async buildResponse(user: User): Promise<AuthResponseDto> {
+    const accessToken = await this.jwtService.signAsync({ sub: user.id, email: user.email });
+    return { accessToken };
   }
 }

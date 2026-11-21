@@ -7,8 +7,10 @@ export interface CreateCaseData {
   /** Explicit case number, or a function building one from the assigned sequence number. */
   caseNumber: string | ((sequenceNumber: number) => string);
   subject: string;
+  requestText?: string;
   receivedAt: Date;
   dueAt: Date;
+  effectiveDueAt: Date;
   handlerInitials?: string;
   assigneeId?: string;
   requesterName?: string;

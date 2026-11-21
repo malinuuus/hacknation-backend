@@ -25,7 +25,7 @@ export interface DemoCase {
  * Ten fictional requests (no real personal data) covering every highlight:
  * overdue, due today, due tomorrow, extended, answered and upcoming.
  * Sequence numbers are assigned in receipt order and skip 509, 543 and 590,
- * so the hackathon example files can still be registered through intake.
+ * so the hackathon example files can still be registered.
  */
 export const DEMO_SEQUENCE_NUMBERS = [478, 486, 495, 503, 517, 526, 538, 551, 562, 574];
 
@@ -82,7 +82,7 @@ export const DEMO_CASES: DemoCase[] = [
     requesterName: 'Fundacja Jawny Samorząd (dane testowe)',
     requesterEmail: 'biuro@jawny.example.com',
     timing: { receivedDaysAgo: 30 },
-    statuses: [CaseStatus.SENT_TO_DEPARTMENTS, CaseStatus.EXTENDED],
+    statuses: [CaseStatus.SENT_TO_DEPARTMENTS],
     departmentSymbols: ['WOA', 'WZP'],
     answeredSymbols: ['WZP'],
     handlerInitials: 'MZ',

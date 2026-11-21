@@ -4,6 +4,7 @@ import { CaseStatus } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AssigneeNotFoundError } from './errors/assignee-not-found.error.js';
 import { caseDocumentSummaryArgs } from './case-documents.repository.js';
+import { CaseSort } from './enums/case-sort.enum.js';
 import { CaseDepartmentNotFoundError } from './errors/case-department-not-found.error.js';
 import { CaseNotFoundError } from './errors/case-not-found.error.js';
 import { CaseNumberTakenError } from './errors/case-number-taken.error.js';
@@ -37,6 +38,19 @@ const detailInclude = {
 
 export type CaseSummaryRecord = Prisma.CaseGetPayload<{ include: typeof summaryInclude }>;
 export type CaseDetailRecord = Prisma.CaseGetPayload<{ include: typeof detailInclude }>;
+
+/** Ties are broken by the register's ordinal number, so the order is stable for paging. */
+const CASE_ORDER: Readonly<Record<CaseSort, Prisma.CaseOrderByWithRelationInput[]>> = {
+  [CaseSort.ReceivedAsc]: [{ receivedAt: 'asc' }, { sequenceNumber: 'asc' }],
+  [CaseSort.ReceivedDesc]: [{ receivedAt: 'desc' }, { sequenceNumber: 'desc' }],
+  // `respondedAt` is set only once the response is sent, so open cases come first.
+  [CaseSort.DeadlineAsc]: [
+    { respondedAt: { sort: 'asc', nulls: 'first' } },
+    { effectiveDueAt: 'asc' },
+    { receivedAt: 'asc' },
+    { sequenceNumber: 'asc' },
+  ],
+};
 
 /** Concurrent creates can race for the same sequence number; retry a few times. */
 const MAX_SEQUENCE_ATTEMPTS = 3;
@@ -204,12 +218,14 @@ export class CasesRepository {
   async findMany(filter: CaseListFilter): Promise<CaseListResult> {
     const where: Prisma.CaseWhereInput = {
       year: filter.year,
-      status: filter.status,
+      status: filter.statuses?.length ? { in: filter.statuses } : undefined,
+      extendedDueAt: filter.extended === undefined ? undefined : filter.extended ? { not: null } : null,
       assigneeId: filter.assigneeId,
       ...(filter.search && {
         OR: [
           { caseNumber: { contains: filter.search, mode: 'insensitive' } },
           { subject: { contains: filter.search, mode: 'insensitive' } },
+          { requestText: { contains: filter.search, mode: 'insensitive' } },
           { requesterName: { contains: filter.search, mode: 'insensitive' } },
         ],
       }),
@@ -219,7 +235,7 @@ export class CasesRepository {
       this.prisma.case.findMany({
         where,
         include: summaryInclude,
-        orderBy: [{ receivedAt: 'asc' }, { sequenceNumber: 'asc' }],
+        orderBy: CASE_ORDER[filter.sort],
         skip: filter.offset,
         take: filter.limit,
       }),
@@ -268,7 +284,8 @@ export class CasesRepository {
     return (await this.prisma.case.findUnique({ where: { id }, select: { id: true } })) !== null;
   }
 
-  private async caseNumberExists(caseNumber: string, exceptId?: string): Promise<boolean> {
+  /** @param exceptId A case to ignore, e.g. the one being renumbered. */
+  async caseNumberExists(caseNumber: string, exceptId?: string): Promise<boolean> {
     const found = await this.prisma.case.findUnique({ where: { caseNumber }, select: { id: true } });
     return found !== null && found.id !== exceptId;
   }

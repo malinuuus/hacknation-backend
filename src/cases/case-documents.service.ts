@@ -16,6 +16,7 @@ import { normalizeUploadFileName } from './helpers/file-name.helper.js';
 import type { DocumentDownload } from './interfaces/document-download.interface.js';
 import type { NewCaseDocumentData } from './interfaces/new-case-document-data.interface.js';
 import type { ProcessedUpload } from './interfaces/processed-upload.interface.js';
+import type { ReadUpload } from './interfaces/read-upload.interface.js';
 import { toCaseDocumentDetailDto, toCaseDocumentDto } from './mappers/case-document.mapper.js';
 
 @Injectable()
@@ -27,11 +28,8 @@ export class CaseDocumentsService {
     private readonly textExtraction: TextExtractionService,
   ) {}
 
-  /**
-   * Validates an uploaded file by its content, reads its text and stores it.
-   * Callers must `discard` the result if they fail to save the record.
-   */
-  async processUpload(file: Express.Multer.File | undefined): Promise<ProcessedUpload> {
+  /** Validates an uploaded file by its content and reads its text, without storing it. */
+  async readUpload(file: Express.Multer.File | undefined): Promise<ReadUpload> {
     if (!file || file.size === 0) {
       throw new BadRequestException('A non-empty file is required');
     }
@@ -43,8 +41,17 @@ export class CaseDocumentsService {
     }
 
     const extraction = await this.textExtraction.extract(file.buffer, type);
-    const stored = await this.storage.save(file.buffer);
-    return { originalName, mimeType: mimeTypeOf(type), stored, extraction };
+    return { originalName, mimeType: mimeTypeOf(type), buffer: file.buffer, extraction };
+  }
+
+  /**
+   * Validates an uploaded file, reads its text and stores it.
+   * Callers must `discard` the result if they fail to save the record.
+   */
+  async processUpload(file: Express.Multer.File | undefined): Promise<ProcessedUpload> {
+    const { buffer, ...upload } = await this.readUpload(file);
+    const stored = await this.storage.save(buffer);
+    return { ...upload, stored };
   }
 
   async discard(upload: ProcessedUpload): Promise<void> {

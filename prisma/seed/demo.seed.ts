@@ -41,20 +41,36 @@ function resolveDates(timing: DemoTiming, today: Date): ResolvedDates {
   return { receivedAt, dueAt: computeDueDate(receivedAt), extendedDueAt: target };
 }
 
-/** Status path after NEW; EXTENDED is inserted when the deadline needs an extension. */
-function statusPath(demo: DemoCase, extended: boolean): CaseStatus[] {
-  const path = [...demo.statuses];
-  if (extended && !path.includes(CaseStatus.EXTENDED)) {
-    path.splice(Math.min(1, path.length), 0, CaseStatus.EXTENDED);
-  }
+interface HistoryEntry {
+  fromStatus: CaseStatus | null;
+  toStatus: CaseStatus;
+  comment: string | null;
+}
+
+/**
+ * History from registration to the current status. An extension keeps the
+ * status, so it is recorded as a same-status entry after the first step.
+ */
+function buildHistory(demo: DemoCase, extendedDueAt: Date | null): HistoryEntry[] {
+  const history: HistoryEntry[] = [{ fromStatus: null, toStatus: CaseStatus.NEW, comment: null }];
   let previous: CaseStatus = CaseStatus.NEW;
-  for (const status of path) {
+  for (const status of demo.statuses) {
     if (!canTransition(previous, status)) {
       throw new Error(`Invalid demo status path for "${demo.subject}": ${previous} → ${status}`);
     }
+    history.push({ fromStatus: previous, toStatus: status, comment: null });
     previous = status;
   }
-  return path;
+  if (extendedDueAt) {
+    const at = Math.min(2, history.length);
+    const status = history[at - 1].toStatus;
+    history.splice(at, 0, {
+      fromStatus: status,
+      toStatus: status,
+      comment: `Termin przedłużony do ${formatDateOnly(extendedDueAt)}`,
+    });
+  }
+  return history;
 }
 
 const minDate = (a: Date, b: Date) => (a < b ? a : b);
@@ -103,7 +119,7 @@ export async function seedDemoCases(prisma: PrismaClient): Promise<void> {
     if (demo.extension) {
       extendedDueAt = minDate(addDays(today, demo.extension.daysFromToday), maxExtendedDueDate(dates.receivedAt));
     }
-    const path = statusPath(demo, extendedDueAt !== null);
+    const history = buildHistory(demo, extendedDueAt);
 
     const requestedAt = minDate(addDays(dates.receivedAt, 1), today);
     const answeredAt = minDate(addDays(requestedAt, 3), today);
@@ -122,26 +138,22 @@ export async function seedDemoCases(prisma: PrismaClient): Promise<void> {
         receivedAt: dates.receivedAt,
         dueAt: dates.dueAt,
         extendedDueAt,
+        effectiveDueAt: extendedDueAt ?? dates.dueAt,
         extensionReason: extendedDueAt
           ? (demo.extension?.reason ?? 'Konieczność uzyskania informacji z kilku komórek urzędu')
           : null,
         respondedAt,
-        status: path.at(-1) ?? CaseStatus.NEW,
+        status: demo.statuses.at(-1) ?? CaseStatus.NEW,
         handlerInitials: demo.handlerInitials,
         requesterName: demo.requesterName,
         requesterEmail: demo.requesterEmail,
         assigneeId: user.id,
         createdById: user.id,
         statusChanges: {
-          create: [CaseStatus.NEW, ...path].map((toStatus, step, all) => ({
-            fromStatus: step === 0 ? null : all[step - 1],
-            toStatus,
+          create: history.map((entry, step) => ({
+            ...entry,
             changedById: user.id,
             createdAt: changedAt(step),
-            comment:
-              toStatus === CaseStatus.EXTENDED && extendedDueAt
-                ? `Termin przedłużony do ${formatDateOnly(extendedDueAt)}`
-                : null,
           })),
         },
         departments: {

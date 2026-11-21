@@ -3,8 +3,10 @@ export interface UpdateCaseData {
   sequenceNumber?: number;
   caseNumber?: string;
   subject?: string;
+  requestText?: string | null;
   receivedAt?: Date;
   dueAt?: Date;
+  effectiveDueAt?: Date;
   handlerInitials?: string | null;
   assigneeId?: string | null;
   requesterName?: string | null;

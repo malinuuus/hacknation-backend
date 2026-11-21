@@ -35,12 +35,12 @@ import {
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { CaseIntakeService } from './case-intake.service.js';
+import { CaseAnalysisService } from './case-analysis.service.js';
 import { CasesService } from './cases.service.js';
-import { CaseIntakeResponseDto } from './dto/case-intake-response.dto.js';
-import { CaseIntakeDto } from './dto/case-intake.dto.js';
+import { CaseAnalysisResponseDto } from './dto/case-analysis-response.dto.js';
 import { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
+import { CreateCaseFormDto } from './dto/create-case-form.dto.js';
 import { CreateCaseDto } from './dto/create-case.dto.js';
 import { ExtendDeadlineDto } from './dto/extend-deadline.dto.js';
 import { ListCasesQueryDto } from './dto/list-cases-query.dto.js';
@@ -56,48 +56,60 @@ import { UpdateCaseDto } from './dto/update-case.dto.js';
 export class CasesController {
   constructor(
     private readonly casesService: CasesService,
-    private readonly intakeService: CaseIntakeService,
+    private readonly analysisService: CaseAnalysisService,
   ) {}
 
+  @Post('analyze')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' } } },
+  })
+  @ApiOperation({
+    summary: 'Read a request file before registering it',
+    description:
+      'Upload the request (PDF/DOCX/DOC) to get its text and the case number, receipt date and subject found ' +
+      'in it, for prefilling the form. Nothing is stored: register the confirmed data with `POST /cases`.',
+  })
+  @ApiOkResponse({ type: CaseAnalysisResponseDto })
+  @ApiBadRequestResponse({ description: 'Missing file' })
+  @ApiPayloadTooLargeResponse({ description: 'File too large' })
+  @ApiUnsupportedMediaTypeResponse({ description: 'Not a PDF, DOCX or DOC file' })
+  analyze(@UploadedFile() file: Express.Multer.File | undefined): Promise<CaseAnalysisResponseDto> {
+    return this.analysisService.analyze(file);
+  }
+
   @Post()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('application/json', 'multipart/form-data')
+  @ApiBody({ type: CreateCaseFormDto })
   @ApiOperation({
     summary: 'Register a new request',
-    description: 'Assigns the next sequence number of the year and computes the 14-day statutory deadline.',
+    description:
+      'Send the data confirmed by the official, as JSON or as multipart/form-data with the request `file`, ' +
+      'which is attached to the case. Assigns the next sequence number of the year and computes the ' +
+      '14-day statutory deadline.',
   })
   @ApiCreatedResponse({ type: CaseDetailDto })
   @ApiBadRequestResponse({ description: 'Invalid body, future receipt date or unknown assignee' })
   @ApiConflictResponse({ description: 'Case number is already used' })
-  create(@Body() dto: CreateCaseDto, @CurrentUser() user: AuthUser): Promise<CaseDetailDto> {
-    return this.casesService.create(dto, user);
-  }
-
-  @Post('intake')
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({ type: CaseIntakeDto })
-  @ApiOperation({
-    summary: 'Register a request from its file',
-    description:
-      'Upload the request (PDF/DOCX/DOC). The case number, receipt date and subject are read from the file ' +
-      'unless given; check `suggestions` and `warnings`, then correct the case with PATCH if needed.',
-  })
-  @ApiCreatedResponse({ type: CaseIntakeResponseDto })
-  @ApiBadRequestResponse({ description: 'Missing file or invalid fields' })
-  @ApiConflictResponse({ description: 'The case number from the file is already used' })
   @ApiPayloadTooLargeResponse({ description: 'File too large' })
   @ApiUnsupportedMediaTypeResponse({ description: 'Not a PDF, DOCX or DOC file' })
-  intake(
+  create(
+    @Body() dto: CreateCaseDto,
     @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() dto: CaseIntakeDto,
     @CurrentUser() user: AuthUser,
-  ): Promise<CaseIntakeResponseDto> {
-    return this.intakeService.intake(file, dto, user);
+  ): Promise<CaseDetailDto> {
+    return this.casesService.create(dto, user, file);
   }
 
   @Get()
   @ApiOperation({
     summary: 'List the request register for a year',
-    description: 'Oldest received first. Each row carries `urgency` and `daysLeft` for highlighting.',
+    description:
+      'Filter by status, extension and text; sort by receipt or by the nearest deadline (oldest received ' +
+      'first by default). Each row carries `urgency` and `daysLeft` for highlighting.',
   })
   @ApiOkResponse({ type: CaseListResponseDto })
   list(@Query() query: ListCasesQueryDto): Promise<CaseListResponseDto> {
@@ -156,18 +168,34 @@ export class CasesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Extend the response deadline (kwerenda)',
-    description: 'Sets the extended deadline (max 2 months from receipt) and moves the case to EXTENDED.',
+    description:
+      'Sets or changes the extended deadline (max 2 months from receipt). The status does not change; ' +
+      'the extension is recorded in the history.',
   })
   @ApiOkResponse({ type: CaseDetailDto })
   @ApiBadRequestResponse({ description: 'Date not after the statutory deadline or beyond 2 months' })
   @ApiNotFoundResponse({ description: 'Case not found' })
-  @ApiConflictResponse({ description: 'Case cannot be extended in its current status' })
+  @ApiConflictResponse({ description: 'The response was already sent, or the case was changed meanwhile' })
   extendDeadline(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ExtendDeadlineDto,
     @CurrentUser() user: AuthUser,
   ): Promise<CaseDetailDto> {
     return this.casesService.extendDeadline(id, dto, user);
+  }
+
+  @Delete(':id/extension')
+  @ApiOperation({
+    summary: 'Withdraw the deadline extension',
+    description: 'For an extension set by mistake: the statutory deadline applies again.',
+  })
+  @ApiOkResponse({ type: CaseDetailDto })
+  @ApiNotFoundResponse({ description: 'Case not found' })
+  @ApiConflictResponse({
+    description: 'Not extended, the response was already sent, or the case was changed meanwhile',
+  })
+  cancelExtension(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser): Promise<CaseDetailDto> {
+    return this.casesService.cancelExtension(id, user);
   }
 
   @Put(':id/departments')

@@ -1,7 +1,6 @@
 import { MetadataSource } from '../enums/metadata-source.enum.js';
 import { parseRequestMetadata } from './request-metadata.helper.js';
 
-// Texts as extracted from the hackathon example requests.
 const ASTORIA_PDF = `WNIOSEK O UDOSTĘPNIENIE INFORMACJI PUBLICZNEJ
 Na podstawie art. 2 ust. 1 i art. 10 ust. 1 ustawy z dnia 6 września 2001 r. o dostępie do informacji
 publicznej

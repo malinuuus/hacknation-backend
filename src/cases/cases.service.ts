@@ -2,9 +2,10 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import type { EnvironmentVariables } from '../config/environment/environment-variables.validation.js';
-import { CaseStatus } from '../generated/prisma/enums.js';
+import { CaseDocumentKind, CaseStatus } from '../generated/prisma/enums.js';
 import { FileStorageService } from '../storage/file-storage.service.js';
 import { CaseDocumentsRepository } from './case-documents.repository.js';
+import { CaseDocumentsService } from './case-documents.service.js';
 import { type CaseDetailRecord, CasesRepository } from './cases.repository.js';
 import type { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import type { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
@@ -22,11 +23,10 @@ import { CaseStatusChangedError } from './errors/case-status-changed.error.js';
 import { DepartmentNotFoundError } from './errors/department-not-found.error.js';
 import { SequenceNumberTakenError } from './errors/sequence-number-taken.error.js';
 import { formatCaseNumber, sequenceNumberFromCaseNumber } from './helpers/case-number.helper.js';
-import { allowedTransitions, canTransition } from './helpers/case-status.helper.js';
+import { allowedTransitions, canChangeDeadline, canTransition } from './helpers/case-status.helper.js';
 import { formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './helpers/date-only.helper.js';
 import { computeDueDate, maxExtendedDueDate } from './helpers/deadline.helper.js';
 import type { CaseStatusChangeData } from './interfaces/case-status-change-data.interface.js';
-import type { NewCaseDocumentData } from './interfaces/new-case-document-data.interface.js';
 import type { UpdateCaseData } from './interfaces/update-case-data.interface.js';
 import { toCaseDetailDto, toCaseSummaryDto } from './mappers/case.mapper.js';
 
@@ -37,18 +37,26 @@ export class CasesService {
   constructor(
     private readonly casesRepository: CasesRepository,
     private readonly documentsRepository: CaseDocumentsRepository,
+    private readonly documentsService: CaseDocumentsService,
     private readonly storage: FileStorageService,
     config: ConfigService,
   ) {
     this.caseNumberPrefix = config.getOrThrow<EnvironmentVariables['CASE_NUMBER_PREFIX']>('CASE_NUMBER_PREFIX');
   }
 
-  /** @param document The request file, stored in the same transaction as the case. */
-  async create(dto: CreateCaseDto, user: AuthUser, document?: NewCaseDocumentData): Promise<CaseDetailDto> {
+  /**
+   * Registers a request with the data confirmed by the official (brief, step 5).
+   *
+   * @param file The request file, attached in the same transaction as the case.
+   *   Without `requestText`, the text read from it is used.
+   */
+  async create(dto: CreateCaseDto, user: AuthUser, file?: Express.Multer.File): Promise<CaseDetailDto> {
     const today = todayInOfficeTimeZone();
     const receivedAt = this.parseReceivedAt(dto.receivedAt, today);
     const year = receivedAt.getUTCFullYear();
+    const dueAt = computeDueDate(receivedAt);
 
+    const upload = file ? await this.documentsService.processUpload(file) : undefined;
     try {
       const created = await this.casesRepository.create({
         year,
@@ -57,8 +65,10 @@ export class CasesService {
         caseNumber:
           dto.caseNumber ?? ((sequenceNumber) => formatCaseNumber(this.caseNumberPrefix, sequenceNumber, year)),
         subject: dto.subject,
+        requestText: dto.requestText ?? upload?.extraction.text ?? undefined,
         receivedAt,
-        dueAt: computeDueDate(receivedAt),
+        dueAt,
+        effectiveDueAt: dueAt,
         handlerInitials: dto.handlerInitials,
         assigneeId: dto.assigneeId,
         requesterName: dto.requesterName,
@@ -66,10 +76,13 @@ export class CasesService {
         requesterAddress: dto.requesterAddress,
         notes: dto.notes,
         createdById: user.id,
-        document,
+        document: upload && this.documentsService.toDocumentData(upload, CaseDocumentKind.REQUEST, user),
       });
       return toCaseDetailDto(created, today);
     } catch (error) {
+      if (upload) {
+        await this.documentsService.discard(upload);
+      }
       throw this.toHttpError(error);
     }
   }
@@ -78,9 +91,11 @@ export class CasesService {
     const today = todayInOfficeTimeZone();
     const { items, total } = await this.casesRepository.findMany({
       year: query.year ?? today.getUTCFullYear(),
-      status: query.status,
+      statuses: query.status,
+      extended: query.extended,
       assigneeId: query.assigneeId,
       search: query.q,
+      sort: query.sort,
       limit: query.limit,
       offset: query.offset,
     });
@@ -114,6 +129,7 @@ export class CasesService {
 
     const data: UpdateCaseData = {
       subject: dto.subject,
+      requestText: dto.requestText,
       handlerInitials: dto.handlerInitials,
       assigneeId: dto.assigneeId,
       requesterName: dto.requesterName,
@@ -134,6 +150,7 @@ export class CasesService {
       if (existing.extendedDueAt) {
         this.assertValidExtension(existing.extendedDueAt, receivedAt, data.dueAt);
       }
+      data.effectiveDueAt = existing.extendedDueAt ?? data.dueAt;
     }
 
     if (dto.caseNumber !== undefined && dto.caseNumber !== existing.caseNumber) {
@@ -177,21 +194,42 @@ export class CasesService {
     });
   }
 
-  /** Kwerenda: extends the deadline (art. 13 ust. 2 UDIP) and moves the case to EXTENDED. */
+  /**
+   * Kwerenda: extends the deadline (art. 13 ust. 2 UDIP), or changes an
+   * existing extension. The status stays; the history records the change.
+   */
   async extendDeadline(id: string, dto: ExtendDeadlineDto, user: AuthUser): Promise<CaseDetailDto> {
     const today = todayInOfficeTimeZone();
     const existing = await this.findOrThrow(id);
-    this.assertTransition(existing.status, CaseStatus.EXTENDED);
+    this.assertDeadlineChangeable(existing.status);
 
     const extendedDueAt = this.parseDate(dto.extendedDueAt, 'extendedDueAt');
     this.assertValidExtension(extendedDueAt, existing.receivedAt, existing.dueAt);
 
     return this.applyStatusChange(id, today, {
       fromStatus: existing.status,
-      toStatus: CaseStatus.EXTENDED,
+      toStatus: existing.status,
       changedById: user.id,
       comment: `Termin przedłużony do ${formatDateOnly(extendedDueAt)}: ${dto.reason}`,
-      fields: { extendedDueAt, extensionReason: dto.reason },
+      fields: { extendedDueAt, extensionReason: dto.reason, effectiveDueAt: extendedDueAt },
+    });
+  }
+
+  /** Withdraws an extension set by mistake; the statutory deadline applies again. */
+  async cancelExtension(id: string, user: AuthUser): Promise<CaseDetailDto> {
+    const today = todayInOfficeTimeZone();
+    const existing = await this.findOrThrow(id);
+    if (!existing.extendedDueAt) {
+      throw new ConflictException('The deadline of this case is not extended');
+    }
+    this.assertDeadlineChangeable(existing.status);
+
+    return this.applyStatusChange(id, today, {
+      fromStatus: existing.status,
+      toStatus: existing.status,
+      changedById: user.id,
+      comment: `Cofnięto przedłużenie terminu; obowiązuje termin ${formatDateOnly(existing.dueAt)}`,
+      fields: { extendedDueAt: null, extensionReason: null, effectiveDueAt: existing.dueAt },
     });
   }
 
@@ -275,6 +313,12 @@ export class CasesService {
     if (!canTransition(from, to)) {
       const allowed = allowedTransitions(from).join(', ') || 'none';
       throw new ConflictException(`Cannot change status from ${from} to ${to}; allowed: ${allowed}`);
+    }
+  }
+
+  private assertDeadlineChangeable(status: CaseStatus): void {
+    if (!canChangeDeadline(status)) {
+      throw new ConflictException('The deadline cannot be changed once the response is sent');
     }
   }
 

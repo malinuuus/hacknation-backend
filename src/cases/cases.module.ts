@@ -5,10 +5,10 @@ import { AuthModule } from '../auth/auth.module.js';
 import type { EnvironmentVariables } from '../config/environment/environment-variables.validation.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { TextExtractionModule } from '../text-extraction/text-extraction.module.js';
+import { CaseAnalysisService } from './case-analysis.service.js';
 import { CaseDocumentsController } from './case-documents.controller.js';
 import { CaseDocumentsRepository } from './case-documents.repository.js';
 import { CaseDocumentsService } from './case-documents.service.js';
-import { CaseIntakeService } from './case-intake.service.js';
 import { CasesController } from './cases.controller.js';
 import { CasesRepository } from './cases.repository.js';
 import { CasesService } from './cases.service.js';
@@ -35,6 +35,6 @@ const BYTES_PER_MB = 1024 * 1024;
     }),
   ],
   controllers: [CasesController, CaseDocumentsController],
-  providers: [CasesService, CasesRepository, CaseDocumentsService, CaseDocumentsRepository, CaseIntakeService],
+  providers: [CasesService, CasesRepository, CaseDocumentsService, CaseDocumentsRepository, CaseAnalysisService],
 })
 export class CasesModule {}

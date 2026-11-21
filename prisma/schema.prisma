@@ -27,7 +27,6 @@ model User {
 enum CaseStatus {
   NEW
   SENT_TO_DEPARTMENTS
-  EXTENDED
   RESPONSE_PREPARED
   RESPONSE_SENT
 
@@ -40,9 +39,15 @@ model Case {
   sequenceNumber   Int        @map("sequence_number")
   caseNumber       String     @unique @map("case_number")
   subject          String
+  /// Text of the request as verified by the official; used for search and drafting.
+  requestText      String?    @map("request_text")
   receivedAt       DateTime   @map("received_at") @db.Date
-  dueAt            DateTime   @map("due_at") @db.Date
+  /// Date the requester wrote the letter; informational, the deadline runs from `receivedAt`.
+  writtenAt        DateTime?  @map("written_at") @db.Date
+  dueAt          DateTime   @map("due_at") @db.Date
   extendedDueAt    DateTime?  @map("extended_due_at") @db.Date
+  /// extendedDueAt ?? dueAt, stored so the register can be sorted by the deadline in force.
+  effectiveDueAt   DateTime   @map("effective_due_at") @db.Date
   extensionReason  String?    @map("extension_reason")
   respondedAt      DateTime?  @map("responded_at") @db.Date
   status           CaseStatus @default(NEW)
@@ -64,6 +69,7 @@ model Case {
 
   @@unique([year, sequenceNumber])
   @@index([year, receivedAt])
+  @@index([year, effectiveDueAt])
   @@map("cases")
 }
 

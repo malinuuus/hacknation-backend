@@ -2,18 +2,22 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import type { EnvironmentVariables } from '../config/environment/environment-variables.validation.js';
-import { CaseStatus } from '../generated/prisma/enums.js';
+import { CaseDocumentKind, CaseStatus } from '../generated/prisma/enums.js';
 import { FileStorageService } from '../storage/file-storage.service.js';
 import { CaseDocumentsRepository } from './case-documents.repository.js';
+import { CaseDocumentsService } from './case-documents.service.js';
 import { type CaseDetailRecord, CasesRepository } from './cases.repository.js';
 import type { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
+import type { CaseNumberCheckQueryDto, CaseNumberCheckResponseDto } from './dto/case-number-check.dto.js';
 import type { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
 import type { CreateCaseDto } from './dto/create-case.dto.js';
+import type { DeadlinePreviewQueryDto, DeadlinePreviewResponseDto } from './dto/deadline-preview.dto.js';
 import type { ExtendDeadlineDto } from './dto/extend-deadline.dto.js';
 import type { ListCasesQueryDto } from './dto/list-cases-query.dto.js';
 import type { SetCaseDepartmentsDto } from './dto/set-case-departments.dto.js';
 import type { UpdateCaseDepartmentDto } from './dto/update-case-department.dto.js';
 import type { UpdateCaseDto } from './dto/update-case.dto.js';
+import { CaseConflict } from './enums/case-conflict.enum.js';
 import { AssigneeNotFoundError } from './errors/assignee-not-found.error.js';
 import { CaseDepartmentNotFoundError } from './errors/case-department-not-found.error.js';
 import { CaseNotFoundError } from './errors/case-not-found.error.js';
@@ -21,12 +25,11 @@ import { CaseNumberTakenError } from './errors/case-number-taken.error.js';
 import { CaseStatusChangedError } from './errors/case-status-changed.error.js';
 import { DepartmentNotFoundError } from './errors/department-not-found.error.js';
 import { SequenceNumberTakenError } from './errors/sequence-number-taken.error.js';
-import { formatCaseNumber, sequenceNumberFromCaseNumber } from './helpers/case-number.helper.js';
-import { allowedTransitions, canTransition } from './helpers/case-status.helper.js';
+import { formatCaseNumber, parseSequenceAndYear, sequenceNumberFromCaseNumber } from './helpers/case-number.helper.js';
+import { allowedTransitions, canChangeDeadline, canTransition } from './helpers/case-status.helper.js';
 import { formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './helpers/date-only.helper.js';
 import { computeDueDate, maxExtendedDueDate } from './helpers/deadline.helper.js';
 import type { CaseStatusChangeData } from './interfaces/case-status-change-data.interface.js';
-import type { NewCaseDocumentData } from './interfaces/new-case-document-data.interface.js';
 import type { UpdateCaseData } from './interfaces/update-case-data.interface.js';
 import { toCaseDetailDto, toCaseSummaryDto } from './mappers/case.mapper.js';
 
@@ -37,18 +40,27 @@ export class CasesService {
   constructor(
     private readonly casesRepository: CasesRepository,
     private readonly documentsRepository: CaseDocumentsRepository,
+    private readonly documentsService: CaseDocumentsService,
     private readonly storage: FileStorageService,
     config: ConfigService,
   ) {
     this.caseNumberPrefix = config.getOrThrow<EnvironmentVariables['CASE_NUMBER_PREFIX']>('CASE_NUMBER_PREFIX');
   }
 
-  /** @param document The request file, stored in the same transaction as the case. */
-  async create(dto: CreateCaseDto, user: AuthUser, document?: NewCaseDocumentData): Promise<CaseDetailDto> {
+  /**
+   * Registers a request with the data confirmed by the official (brief, step 5).
+   *
+   * @param file The request file, attached in the same transaction as the case.
+   *   Without `requestText`, the text read from it is used.
+   */
+  async create(dto: CreateCaseDto, user: AuthUser, file?: Express.Multer.File): Promise<CaseDetailDto> {
     const today = todayInOfficeTimeZone();
     const receivedAt = this.parseReceivedAt(dto.receivedAt, today);
     const year = receivedAt.getUTCFullYear();
+    const dueAt = computeDueDate(receivedAt);
+    const writtenAt = dto.writtenAt ? this.parseWrittenAt(dto.writtenAt, receivedAt) : undefined;
 
+    const upload = file ? await this.documentsService.processUpload(file) : undefined;
     try {
       const created = await this.casesRepository.create({
         year,
@@ -57,8 +69,11 @@ export class CasesService {
         caseNumber:
           dto.caseNumber ?? ((sequenceNumber) => formatCaseNumber(this.caseNumberPrefix, sequenceNumber, year)),
         subject: dto.subject,
+        requestText: dto.requestText ?? upload?.extraction.text ?? undefined,
         receivedAt,
-        dueAt: computeDueDate(receivedAt),
+        writtenAt,
+        dueAt,
+        effectiveDueAt: dueAt,
         handlerInitials: dto.handlerInitials,
         assigneeId: dto.assigneeId,
         requesterName: dto.requesterName,
@@ -66,10 +81,13 @@ export class CasesService {
         requesterAddress: dto.requesterAddress,
         notes: dto.notes,
         createdById: user.id,
-        document,
+        document: upload && this.documentsService.toDocumentData(upload, CaseDocumentKind.REQUEST, user),
       });
       return toCaseDetailDto(created, today);
     } catch (error) {
+      if (upload) {
+        await this.documentsService.discard(upload);
+      }
       throw this.toHttpError(error);
     }
   }
@@ -78,9 +96,11 @@ export class CasesService {
     const today = todayInOfficeTimeZone();
     const { items, total } = await this.casesRepository.findMany({
       year: query.year ?? today.getUTCFullYear(),
-      status: query.status,
+      statuses: query.status,
+      extended: query.extended,
       assigneeId: query.assigneeId,
       search: query.q,
+      sort: query.sort,
       limit: query.limit,
       offset: query.offset,
     });
@@ -90,6 +110,40 @@ export class CasesService {
 
   async getById(id: string): Promise<CaseDetailDto> {
     return toCaseDetailDto(await this.findOrThrow(id), todayInOfficeTimeZone());
+  }
+
+  /** The deadlines `POST /cases` would compute for this receipt date, for the form to show before saving. */
+  previewDeadline(query: DeadlinePreviewQueryDto): DeadlinePreviewResponseDto {
+    const receivedAt = this.parseReceivedAt(query.receivedAt, todayInOfficeTimeZone());
+    return {
+      receivedAt: formatDateOnly(receivedAt),
+      dueAt: formatDateOnly(computeDueDate(receivedAt)),
+      maxExtendedDueAt: formatDateOnly(maxExtendedDueDate(receivedAt)),
+    };
+  }
+
+  /** Whether registering (or renumbering) a case with this number would end in 409. */
+  async checkCaseNumber(query: CaseNumberCheckQueryDto): Promise<CaseNumberCheckResponseDto> {
+    const { caseNumber, exceptId } = query;
+    const result = (conflict: CaseNumberCheckResponseDto['conflict']): CaseNumberCheckResponseDto => ({
+      caseNumber,
+      available: conflict === null,
+      conflict,
+    });
+
+    if (await this.casesRepository.caseNumberExists(caseNumber, exceptId)) {
+      return result(CaseConflict.CaseNumberTaken);
+    }
+    const parsed = parseSequenceAndYear(caseNumber);
+    const year = query.year ?? parsed?.year;
+    if (
+      parsed &&
+      parsed.year === year &&
+      (await this.casesRepository.sequenceNumberExists(year, parsed.sequenceNumber, exceptId))
+    ) {
+      return result(CaseConflict.SequenceNumberTaken);
+    }
+    return result(null);
   }
 
   async getYears(): Promise<CaseYearsResponseDto> {
@@ -114,6 +168,7 @@ export class CasesService {
 
     const data: UpdateCaseData = {
       subject: dto.subject,
+      requestText: dto.requestText,
       handlerInitials: dto.handlerInitials,
       assigneeId: dto.assigneeId,
       requesterName: dto.requesterName,
@@ -134,6 +189,16 @@ export class CasesService {
       if (existing.extendedDueAt) {
         this.assertValidExtension(existing.extendedDueAt, receivedAt, data.dueAt);
       }
+      data.effectiveDueAt = existing.extendedDueAt ?? data.dueAt;
+    }
+
+    const receivedAt = data.receivedAt ?? existing.receivedAt;
+    if (dto.writtenAt === null) {
+      data.writtenAt = null;
+    } else if (dto.writtenAt !== undefined) {
+      data.writtenAt = this.parseWrittenAt(dto.writtenAt, receivedAt);
+    } else if (existing.writtenAt && existing.writtenAt > receivedAt) {
+      throw new BadRequestException('receivedAt cannot be before writtenAt; change or clear writtenAt too');
     }
 
     if (dto.caseNumber !== undefined && dto.caseNumber !== existing.caseNumber) {
@@ -177,21 +242,42 @@ export class CasesService {
     });
   }
 
-  /** Kwerenda: extends the deadline (art. 13 ust. 2 UDIP) and moves the case to EXTENDED. */
+  /**
+   * Kwerenda: extends the deadline (art. 13 ust. 2 UDIP), or changes an
+   * existing extension. The status stays; the history records the change.
+   */
   async extendDeadline(id: string, dto: ExtendDeadlineDto, user: AuthUser): Promise<CaseDetailDto> {
     const today = todayInOfficeTimeZone();
     const existing = await this.findOrThrow(id);
-    this.assertTransition(existing.status, CaseStatus.EXTENDED);
+    this.assertDeadlineChangeable(existing.status);
 
     const extendedDueAt = this.parseDate(dto.extendedDueAt, 'extendedDueAt');
     this.assertValidExtension(extendedDueAt, existing.receivedAt, existing.dueAt);
 
     return this.applyStatusChange(id, today, {
       fromStatus: existing.status,
-      toStatus: CaseStatus.EXTENDED,
+      toStatus: existing.status,
       changedById: user.id,
       comment: `Termin przedłużony do ${formatDateOnly(extendedDueAt)}: ${dto.reason}`,
-      fields: { extendedDueAt, extensionReason: dto.reason },
+      fields: { extendedDueAt, extensionReason: dto.reason, effectiveDueAt: extendedDueAt },
+    });
+  }
+
+  /** Withdraws an extension set by mistake; the statutory deadline applies again. */
+  async cancelExtension(id: string, user: AuthUser): Promise<CaseDetailDto> {
+    const today = todayInOfficeTimeZone();
+    const existing = await this.findOrThrow(id);
+    if (!existing.extendedDueAt) {
+      throw new ConflictException('The deadline of this case is not extended');
+    }
+    this.assertDeadlineChangeable(existing.status);
+
+    return this.applyStatusChange(id, today, {
+      fromStatus: existing.status,
+      toStatus: existing.status,
+      changedById: user.id,
+      comment: `Cofnięto przedłużenie terminu; obowiązuje termin ${formatDateOnly(existing.dueAt)}`,
+      fields: { extendedDueAt: null, extensionReason: null, effectiveDueAt: existing.dueAt },
     });
   }
 
@@ -278,6 +364,12 @@ export class CasesService {
     }
   }
 
+  private assertDeadlineChangeable(status: CaseStatus): void {
+    if (!canChangeDeadline(status)) {
+      throw new ConflictException('The deadline cannot be changed once the response is sent');
+    }
+  }
+
   private assertValidExtension(extendedDueAt: Date, receivedAt: Date, dueAt: Date): void {
     const max = maxExtendedDueDate(receivedAt);
     if (extendedDueAt <= dueAt || extendedDueAt > max) {
@@ -295,6 +387,15 @@ export class CasesService {
     return receivedAt;
   }
 
+  /** The letter is written before it reaches the office (receipt is never in the future). */
+  private parseWrittenAt(value: string, receivedAt: Date): Date {
+    const writtenAt = this.parseDate(value, 'writtenAt');
+    if (writtenAt > receivedAt) {
+      throw new BadRequestException('writtenAt cannot be after receivedAt');
+    }
+    return writtenAt;
+  }
+
   private parseDate(value: string, field: string): Date {
     try {
       return parseDateOnly(value);
@@ -307,16 +408,20 @@ export class CasesService {
     if (error instanceof CaseNotFoundError || error instanceof CaseDepartmentNotFoundError) {
       return new NotFoundException(error.message);
     }
-    if (
-      error instanceof CaseNumberTakenError ||
-      error instanceof SequenceNumberTakenError ||
-      error instanceof CaseStatusChangedError
-    ) {
-      return new ConflictException(error.message);
+    const conflict = conflictCode(error);
+    if (conflict && error instanceof Error) {
+      return new ConflictException({ statusCode: 409, error: 'Conflict', message: error.message, code: conflict });
     }
     if (error instanceof AssigneeNotFoundError || error instanceof DepartmentNotFoundError) {
       return new BadRequestException(error.message);
     }
     return error;
   }
+}
+
+function conflictCode(error: unknown): CaseConflict | undefined {
+  if (error instanceof CaseNumberTakenError) return CaseConflict.CaseNumberTaken;
+  if (error instanceof SequenceNumberTakenError) return CaseConflict.SequenceNumberTaken;
+  if (error instanceof CaseStatusChangedError) return CaseConflict.CaseStatusChanged;
+  return undefined;
 }

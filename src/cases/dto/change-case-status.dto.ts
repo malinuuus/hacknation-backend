@@ -1,19 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { CaseStatus } from '../../generated/prisma/enums.js';
 import { DATE_ONLY_PATTERN } from './create-case.dto.js';
 
-/** EXTENDED needs a new deadline, so it is set through the extension endpoint instead. */
-const SETTABLE_STATUSES = Object.values(CaseStatus).filter((status) => status !== CaseStatus.EXTENDED);
-
 export class ChangeCaseStatusDto {
-  @ApiProperty({
-    enum: SETTABLE_STATUSES,
-    description: 'New status. Use `POST /cases/:id/extension` to move a case to EXTENDED.',
-  })
+  @ApiProperty({ enum: CaseStatus, enumName: 'CaseStatus', description: 'New status' })
   @IsEnum(CaseStatus)
-  @IsIn(SETTABLE_STATUSES, { message: 'Use the extension endpoint to set EXTENDED' })
   status: CaseStatus;
 
   @ApiPropertyOptional({ description: 'Note stored in the status history', maxLength: 1000 })

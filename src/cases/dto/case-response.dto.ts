@@ -53,6 +53,9 @@ export class CaseSummaryDto {
   @ApiPropertyOptional({ format: 'date', nullable: true, description: 'Extended deadline (kwerenda)' })
   extendedDueAt: string | null;
 
+  @ApiProperty({ description: 'Whether the deadline is extended (kwerenda); independent of the status' })
+  isExtended: boolean;
+
   @ApiProperty({ format: 'date', description: 'Deadline in force: the extended one if set, else the statutory one' })
   effectiveDueAt: string;
 
@@ -76,7 +79,7 @@ export class CaseSummaryDto {
 }
 
 export class CaseListResponseDto {
-  @ApiProperty({ type: [CaseSummaryDto], description: 'Oldest received first' })
+  @ApiProperty({ type: [CaseSummaryDto], description: 'In the order given by `sort`' })
   items: CaseSummaryDto[];
 
   @ApiProperty({ description: 'Total matching cases, ignoring limit/offset' })
@@ -101,6 +104,12 @@ export class CaseStatusChangeDto {
 }
 
 export class CaseDetailDto extends CaseSummaryDto {
+  @ApiPropertyOptional({ nullable: true, description: 'Text of the request as verified by the official' })
+  requestText: string | null;
+
+  @ApiPropertyOptional({ format: 'date', nullable: true, description: 'Date the requester wrote the letter' })
+  writtenAt: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   extensionReason: string | null;
 
@@ -131,14 +140,18 @@ export class CaseDetailDto extends CaseSummaryDto {
   @ApiProperty({ type: [CaseDocumentDto], description: 'Attached files, oldest first' })
   documents: CaseDocumentDto[];
 
-  @ApiProperty({ type: [CaseStatusChangeDto], description: 'Oldest first' })
+  @ApiProperty({
+    type: [CaseStatusChangeDto],
+    description:
+      'Oldest first. Entries with fromStatus equal to toStatus record a deadline extension or its withdrawal.',
+  })
   statusHistory: CaseStatusChangeDto[];
 
   @ApiProperty({
     enum: CaseStatus,
     enumName: 'CaseStatus',
     isArray: true,
-    description: 'Statuses the case can move to next (EXTENDED goes through the extension endpoint)',
+    description: 'Statuses the case can move to next',
   })
   allowedStatuses: CaseStatus[];
 

@@ -1,7 +1,6 @@
 import { MetadataSource } from '../enums/metadata-source.enum.js';
 import { parseRequestMetadata } from './request-metadata.helper.js';
 
-// Texts as extracted from the hackathon example requests.
 const ASTORIA_PDF = `WNIOSEK O UDOSTĘPNIENIE INFORMACJI PUBLICZNEJ
 Na podstawie art. 2 ust. 1 i art. 10 ust. 1 ustawy z dnia 6 września 2001 r. o dostępie do informacji
 publicznej
@@ -65,6 +64,69 @@ describe('parseRequestMetadata', () => {
       caseNumber: null,
       receivedAt: null,
       subject: null,
+      writtenAt: null,
+      requesterName: null,
+      requesterEmail: null,
+      requesterAddress: null,
     });
+  });
+
+  it('reads the signature as the requester name', () => {
+    expect(parseRequestMetadata({ fileName: 'x.docx', text: APARTMENTS_DOCX }).requesterName).toEqual({
+      value: 'E. Góra',
+      source: MetadataSource.Text,
+    });
+  });
+
+  it.each([
+    ['Bydgoszcz, 17.08.2026 r.', '2026-08-17'],
+    ['Bydgoszcz, dnia 3 lutego 2026 r.', '2026-02-03'],
+    ['  Nowa Wieś Wielka, 5-11-2026', '2026-11-05'],
+  ])('reads the date the letter was written from "%s"', (line, expected) => {
+    const text = `${line}\nwpływ dnia 19.11.2026\nWniosek`;
+    const result = parseRequestMetadata({ fileName: 'x.pdf', text });
+
+    expect(result.writtenAt?.value).toBe(expected);
+    expect(result.receivedAt?.value).toBe('2026-11-19');
+  });
+
+  it('does not take the office stamp for the date the letter was written', () => {
+    expect(parseRequestMetadata({ fileName: 'x.pdf', text: ANIMALS_SCAN }).writtenAt).toBeNull();
+  });
+
+  it('reads the requester from a forwarded e-mail, skipping the office inbox', () => {
+    const text = `Od: Jan Kowalski <Jan.Kowalski@example.com>
+Do: bks@um.bydgoszcz.pl
+Temat: wniosek
+
+Proszę o informację w sprawie remontu ulicy Gdańskiej w latach 2024–2026.`;
+    const result = parseRequestMetadata({ fileName: 'mail.pdf', text });
+
+    expect(result.requesterName?.value).toBe('Jan Kowalski');
+    expect(result.requesterEmail?.value).toBe('jan.kowalski@example.com');
+  });
+
+  it('reads the requester address, but not the office address', () => {
+    const text = `Anna Nowak
+ul. Długa 5/2
+85-001 Bydgoszcz
+
+Urząd Miasta Bydgoszczy
+ul. Jezuicka 1
+85-102 Bydgoszcz`;
+    expect(parseRequestMetadata({ fileName: 'x.pdf', text }).requesterAddress?.value).toBe(
+      'ul. Długa 5/2, 85-001 Bydgoszcz',
+    );
+  });
+
+  it('prefers a labelled address and ignores the office address alone', () => {
+    expect(
+      parseRequestMetadata({ fileName: 'x.pdf', text: 'Adres do korespondencji: ul. Krótka 1, 85-002 Bydgoszcz' })
+        .requesterAddress?.value,
+    ).toBe('ul. Krótka 1, 85-002 Bydgoszcz');
+    expect(
+      parseRequestMetadata({ fileName: 'x.pdf', text: 'Prezydent Miasta Bydgoszczy\nul. Jezuicka 1\n85-102 Bydgoszcz' })
+        .requesterAddress,
+    ).toBeNull();
   });
 });

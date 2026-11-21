@@ -22,6 +22,7 @@ export function toCaseSummaryDto(record: CaseSummaryRecord, today: Date): CaseSu
     receivedAt: formatDateOnly(record.receivedAt),
     dueAt: formatDateOnly(record.dueAt),
     extendedDueAt: formatOptional(record.extendedDueAt),
+    isExtended: record.extendedDueAt !== null,
     effectiveDueAt: formatDateOnly(effectiveDueAt),
     daysLeft,
     urgency,
@@ -38,6 +39,8 @@ export function toCaseSummaryDto(record: CaseSummaryRecord, today: Date): CaseSu
 export function toCaseDetailDto(record: CaseDetailRecord, today: Date): CaseDetailDto {
   return {
     ...toCaseSummaryDto(record, today),
+    requestText: record.requestText,
+    writtenAt: formatOptional(record.writtenAt),
     extensionReason: record.extensionReason,
     requesterName: record.requesterName,
     requesterEmail: record.requesterEmail,

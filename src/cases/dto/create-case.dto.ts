@@ -8,6 +8,8 @@ const trimToUndefined = ({ value }: { value: unknown }) =>
 
 export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+const REQUEST_TEXT_MAX_LENGTH = 100_000;
+
 export class CreateCaseDto {
   @ApiProperty({
     description: 'Short description of what the request is about',
@@ -27,6 +29,28 @@ export class CreateCaseDto {
   })
   @Matches(DATE_ONLY_PATTERN, { message: 'receivedAt must be a date in YYYY-MM-DD format' })
   receivedAt: string;
+
+  @ApiPropertyOptional({
+    description: 'Date the requester wrote the letter, YYYY-MM-DD. Informational only; cannot be after `receivedAt`.',
+    example: '2026-08-17',
+    format: 'date',
+  })
+  @Transform(trimToUndefined)
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, { message: 'writtenAt must be a date in YYYY-MM-DD format' })
+  writtenAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Text of the request as verified by the official. When a request file is uploaded without it, ' +
+      'the text read from the file is used.',
+    maxLength: REQUEST_TEXT_MAX_LENGTH,
+  })
+  @Transform(trimToUndefined)
+  @IsOptional()
+  @IsString()
+  @MaxLength(REQUEST_TEXT_MAX_LENGTH)
+  requestText?: string;
 
   @ApiPropertyOptional({
     description: 'Official case number. Generated as `<prefix>.<sequence>.<year>` when omitted.',

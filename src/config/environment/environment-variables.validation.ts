@@ -26,6 +26,22 @@ export class EnvironmentVariables {
     message: 'JWT_EXPIRES_IN must be a number of seconds or a duration such as "15m", "12h" or "7d"',
   })
   JWT_EXPIRES_IN: string;
+
+  /** Prefix of generated case numbers, e.g. BKS.IV.1431 → BKS.IV.1431.590.2026. */
+  @IsString()
+  @Matches(/^[A-Za-z0-9.\-/]+$/, { message: 'CASE_NUMBER_PREFIX may only contain letters, digits, ".", "-" and "/"' })
+  CASE_NUMBER_PREFIX: string = 'BKS.IV.1431';
+
+  /** Directory for uploaded documents; relative paths resolve from the working directory. */
+  @IsString()
+  @IsNotEmpty()
+  UPLOAD_DIR: string = 'storage/uploads';
+
+  /** Maximum size of one uploaded document, in megabytes. */
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  UPLOAD_MAX_FILE_SIZE_MB: number = 20;
 }
 
 export const validate = (config: Record<string, unknown>) => {

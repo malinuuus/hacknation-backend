@@ -16,5 +16,146 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  createdCases      Case[]             @relation("CaseCreatedBy")
+  uploadedDocuments CaseDocument[]
+  assignedCases     Case[]             @relation("CaseAssignee")
+  statusChanges     CaseStatusChange[]
+
   @@map("users")
+}
+
+enum CaseStatus {
+  NEW
+  SENT_TO_DEPARTMENTS
+  EXTENDED
+  RESPONSE_PREPARED
+  RESPONSE_SENT
+
+  @@map("case_status")
+}
+
+model Case {
+  id               String     @id @default(uuid()) @db.Uuid
+  year             Int
+  sequenceNumber   Int        @map("sequence_number")
+  caseNumber       String     @unique @map("case_number")
+  subject          String
+  receivedAt       DateTime   @map("received_at") @db.Date
+  dueAt            DateTime   @map("due_at") @db.Date
+  extendedDueAt    DateTime?  @map("extended_due_at") @db.Date
+  extensionReason  String?    @map("extension_reason")
+  respondedAt      DateTime?  @map("responded_at") @db.Date
+  status           CaseStatus @default(NEW)
+  handlerInitials  String?    @map("handler_initials")
+  requesterName    String?    @map("requester_name")
+  requesterEmail   String?    @map("requester_email")
+  requesterAddress String?    @map("requester_address")
+  notes            String?
+  assigneeId       String?    @map("assignee_id") @db.Uuid
+  createdById      String     @map("created_by_id") @db.Uuid
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  assignee      User?              @relation("CaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy     User               @relation("CaseCreatedBy", fields: [createdById], references: [id])
+  statusChanges CaseStatusChange[]
+  departments   CaseDepartment[]
+  documents     CaseDocument[]
+
+  @@unique([year, sequenceNumber])
+  @@index([year, receivedAt])
+  @@map("cases")
+}
+
+model CaseStatusChange {
+  id          String      @id @default(uuid()) @db.Uuid
+  caseId      String      @map("case_id") @db.Uuid
+  fromStatus  CaseStatus? @map("from_status")
+  toStatus    CaseStatus  @map("to_status")
+  comment     String?
+  changedById String      @map("changed_by_id") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  case      Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  changedBy User @relation(fields: [changedById], references: [id])
+
+  @@index([caseId, createdAt])
+  @@map("case_status_changes")
+}
+
+enum DepartmentKind {
+  DEPARTMENT
+  OFFICE
+
+  @@map("department_kind")
+}
+
+model Department {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String         @unique
+  symbol    String         @unique
+  kind      DepartmentKind
+  isActive  Boolean        @default(true) @map("is_active")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  cases     CaseDepartment[]
+  documents CaseDocument[]
+
+  @@map("departments")
+}
+
+model CaseDepartment {
+  caseId       String    @map("case_id") @db.Uuid
+  departmentId String    @map("department_id") @db.Uuid
+  requestedAt  DateTime  @map("requested_at") @db.Date
+  answeredAt   DateTime? @map("answered_at") @db.Date
+
+  case       Case       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id])
+
+  @@id([caseId, departmentId])
+  @@index([departmentId])
+  @@map("case_departments")
+}
+
+enum CaseDocumentKind {
+  REQUEST
+  DEPARTMENT_RESPONSE
+  DRAFT_RESPONSE
+  OTHER
+
+  @@map("case_document_kind")
+}
+
+enum TextExtractionStatus {
+  EXTRACTED
+  NO_TEXT
+  UNSUPPORTED
+  FAILED
+
+  @@map("text_extraction_status")
+}
+
+model CaseDocument {
+  id                   String               @id @default(uuid()) @db.Uuid
+  caseId               String               @map("case_id") @db.Uuid
+  kind                 CaseDocumentKind
+  departmentId         String?              @map("department_id") @db.Uuid
+  originalName         String               @map("original_name")
+  mimeType             String               @map("mime_type")
+  sizeBytes            Int                  @map("size_bytes")
+  sha256               String
+  storageKey           String               @unique @map("storage_key")
+  extractedText        String?              @map("extracted_text")
+  textExtractionStatus TextExtractionStatus @map("text_extraction_status")
+  uploadedById         String               @map("uploaded_by_id") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at")
+
+  case       Case        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  uploadedBy User        @relation(fields: [uploadedById], references: [id])
+
+  @@index([caseId, createdAt])
+  @@map("case_documents")
 }

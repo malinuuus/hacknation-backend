@@ -20,8 +20,8 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
-  ApiConsumes,
   ApiConflictResponse,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -32,16 +32,18 @@ import {
   ApiUnauthorizedResponse,
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
-import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { CaseAnalysisService } from './case-analysis.service.js';
 import { CasesService } from './cases.service.js';
 import { CaseAnalysisResponseDto } from './dto/case-analysis-response.dto.js';
+import { CaseNumberCheckQueryDto, CaseNumberCheckResponseDto } from './dto/case-number-check.dto.js';
 import { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
 import { CreateCaseFormDto } from './dto/create-case-form.dto.js';
 import { CreateCaseDto } from './dto/create-case.dto.js';
+import { DeadlinePreviewQueryDto, DeadlinePreviewResponseDto } from './dto/deadline-preview.dto.js';
 import { ExtendDeadlineDto } from './dto/extend-deadline.dto.js';
 import { ListCasesQueryDto } from './dto/list-cases-query.dto.js';
 import { SetCaseDepartmentsDto } from './dto/set-case-departments.dto.js';
@@ -93,7 +95,10 @@ export class CasesController {
   })
   @ApiCreatedResponse({ type: CaseDetailDto })
   @ApiBadRequestResponse({ description: 'Invalid body, future receipt date or unknown assignee' })
-  @ApiConflictResponse({ description: 'Case number is already used' })
+  @ApiConflictResponse({
+    description:
+      'Case number or its sequence number is already used; `code` is CASE_NUMBER_TAKEN or SEQUENCE_NUMBER_TAKEN',
+  })
   @ApiPayloadTooLargeResponse({ description: 'File too large' })
   @ApiUnsupportedMediaTypeResponse({ description: 'Not a PDF, DOCX or DOC file' })
   create(
@@ -121,6 +126,31 @@ export class CasesController {
   @ApiOkResponse({ type: CaseYearsResponseDto })
   getYears(): Promise<CaseYearsResponseDto> {
     return this.casesService.getYears();
+  }
+
+  @Get('deadline-preview')
+  @ApiOperation({
+    summary: 'Preview the deadline for a receipt date',
+    description:
+      'The statutory deadline `POST /cases` would compute (14 days, moved past weekends and public ' +
+      'holidays) and the latest extended deadline, for showing in the form before saving.',
+  })
+  @ApiOkResponse({ type: DeadlinePreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid or future date' })
+  previewDeadline(@Query() query: DeadlinePreviewQueryDto): DeadlinePreviewResponseDto {
+    return this.casesService.previewDeadline(query);
+  }
+
+  @Get('case-number-check')
+  @ApiOperation({
+    summary: 'Check whether a case number is free',
+    description:
+      'For validating the case number field before saving: `available: false` with the `conflict` that ' +
+      '`POST /cases` or `PATCH /cases/:id` would return as 409.',
+  })
+  @ApiOkResponse({ type: CaseNumberCheckResponseDto })
+  checkCaseNumber(@Query() query: CaseNumberCheckQueryDto): Promise<CaseNumberCheckResponseDto> {
+    return this.casesService.checkCaseNumber(query);
   }
 
   @Get(':id')

@@ -20,6 +20,26 @@ export class CaseAnalysisSuggestionsDto {
 
   @ApiPropertyOptional({ type: SuggestedValueDto, nullable: true })
   subject: SuggestedValueDto | null;
+
+  @ApiPropertyOptional({
+    type: SuggestedValueDto,
+    nullable: true,
+    description: 'From the place and date line of the letter; omitted when after the receipt date or in the future',
+  })
+  writtenAt: SuggestedValueDto | null;
+
+  @ApiPropertyOptional({
+    type: SuggestedValueDto,
+    nullable: true,
+    description: 'From a "Wnioskodawca:"/"Od:" line or the signature',
+  })
+  requesterName: SuggestedValueDto | null;
+
+  @ApiPropertyOptional({ type: SuggestedValueDto, nullable: true })
+  requesterEmail: SuggestedValueDto | null;
+
+  @ApiPropertyOptional({ type: SuggestedValueDto, nullable: true, description: 'Postal address of the requester' })
+  requesterAddress: SuggestedValueDto | null;
 }
 
 export class CaseAnalysisResponseDto {

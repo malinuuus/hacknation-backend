@@ -290,6 +290,15 @@ export class CasesRepository {
     return found !== null && found.id !== exceptId;
   }
 
+  /** @param exceptId A case to ignore, e.g. the one being renumbered. */
+  async sequenceNumberExists(year: number, sequenceNumber: number, exceptId?: string): Promise<boolean> {
+    const found = await this.prisma.case.findUnique({
+      where: { year_sequenceNumber: { year, sequenceNumber } },
+      select: { id: true },
+    });
+    return found !== null && found.id !== exceptId;
+  }
+
   /** Translates Prisma constraint errors into domain errors; returns other errors unchanged. */
   private async mapWriteError(
     error: unknown,

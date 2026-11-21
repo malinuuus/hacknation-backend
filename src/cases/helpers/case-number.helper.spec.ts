@@ -1,4 +1,4 @@
-import { formatCaseNumber, sequenceNumberFromCaseNumber } from './case-number.helper.js';
+import { formatCaseNumber, parseSequenceAndYear, sequenceNumberFromCaseNumber } from './case-number.helper.js';
 
 describe('case numbers', () => {
   it('formats prefix, sequence and year', () => {
@@ -13,5 +13,10 @@ describe('case numbers', () => {
     ['BKS.IV.1431.0.2026', 2026, undefined],
   ])('reads the sequence from %s (year %i)', (caseNumber, year, expected) => {
     expect(sequenceNumberFromCaseNumber(caseNumber, year)).toBe(expected);
+  });
+
+  it('reads the sequence and year of any year', () => {
+    expect(parseSequenceAndYear('BKS.IV.1431.543.2025')).toEqual({ sequenceNumber: 543, year: 2025 });
+    expect(parseSequenceAndYear('WNIOSEK-17')).toBeUndefined();
   });
 });

@@ -107,6 +107,9 @@ export class CaseDetailDto extends CaseSummaryDto {
   @ApiPropertyOptional({ nullable: true, description: 'Text of the request as verified by the official' })
   requestText: string | null;
 
+  @ApiPropertyOptional({ format: 'date', nullable: true, description: 'Date the requester wrote the letter' })
+  writtenAt: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   extensionReason: string | null;
 

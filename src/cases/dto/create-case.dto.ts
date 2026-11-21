@@ -31,6 +31,16 @@ export class CreateCaseDto {
   receivedAt: string;
 
   @ApiPropertyOptional({
+    description: 'Date the requester wrote the letter, YYYY-MM-DD. Informational only; cannot be after `receivedAt`.',
+    example: '2026-08-17',
+    format: 'date',
+  })
+  @Transform(trimToUndefined)
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, { message: 'writtenAt must be a date in YYYY-MM-DD format' })
+  writtenAt?: string;
+
+  @ApiPropertyOptional({
     description:
       'Text of the request as verified by the official. When a request file is uploaded without it, ' +
       'the text read from the file is used.',

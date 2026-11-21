@@ -9,6 +9,7 @@ export interface CreateCaseData {
   subject: string;
   requestText?: string;
   receivedAt: Date;
+  writtenAt?: Date;
   dueAt: Date;
   effectiveDueAt: Date;
   handlerInitials?: string;

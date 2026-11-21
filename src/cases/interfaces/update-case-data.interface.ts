@@ -5,6 +5,7 @@ export interface UpdateCaseData {
   subject?: string;
   requestText?: string | null;
   receivedAt?: Date;
+  writtenAt?: Date | null;
   dueAt?: Date;
   effectiveDueAt?: Date;
   handlerInitials?: string | null;

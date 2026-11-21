@@ -40,6 +40,7 @@ export function toCaseDetailDto(record: CaseDetailRecord, today: Date): CaseDeta
   return {
     ...toCaseSummaryDto(record, today),
     requestText: record.requestText,
+    writtenAt: formatOptional(record.writtenAt),
     extensionReason: record.extensionReason,
     requesterName: record.requesterName,
     requesterEmail: record.requesterEmail,

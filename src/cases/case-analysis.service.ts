@@ -36,9 +36,16 @@ export class CaseAnalysisService {
       warnings.push(extractionWarning);
     }
 
-    if (suggestions.receivedAt && parseDateOnly(suggestions.receivedAt.value) > todayInOfficeTimeZone()) {
+    const today = todayInOfficeTimeZone();
+    if (suggestions.receivedAt && parseDateOnly(suggestions.receivedAt.value) > today) {
       suggestions.receivedAt = null;
       warnings.push(AnalysisWarning.ReceivedAtInFutureIgnored);
+    }
+
+    // A letter is written before it is received; a later date is a misread, not worth a warning.
+    const latestWrittenAt = suggestions.receivedAt ? parseDateOnly(suggestions.receivedAt.value) : today;
+    if (suggestions.writtenAt && parseDateOnly(suggestions.writtenAt.value) > latestWrittenAt) {
+      suggestions.writtenAt = null;
     }
 
     if (suggestions.caseNumber && (await this.casesRepository.caseNumberExists(suggestions.caseNumber.value))) {

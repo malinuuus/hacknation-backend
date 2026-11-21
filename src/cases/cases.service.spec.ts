@@ -22,6 +22,7 @@ function caseRecord(overrides: Partial<CaseDetailRecord> = {}): CaseDetailRecord
     subject: 'Astoria',
     requestText: null,
     receivedAt: d('2026-11-08'),
+    writtenAt: null,
     dueAt: d('2026-11-23'),
     extendedDueAt: null,
     effectiveDueAt: d('2026-11-23'),
@@ -143,9 +144,78 @@ describe('CasesService', () => {
       );
     });
 
-    it('maps a taken case number to 409', async () => {
+    it('maps a taken case number to 409 with a code', async () => {
       repository.create.mockRejectedValue(new CaseNumberTakenError('BKS.IV.1431.1.2026'));
-      await expect(service.create({ subject: 'x', receivedAt: '2026-11-20' }, user)).rejects.toThrow(ConflictException);
+      const error = await service.create({ subject: 'x', receivedAt: '2026-11-20' }, user).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({ statusCode: 409, code: 'CASE_NUMBER_TAKEN' });
+    });
+
+    it('stores the date the letter was written', async () => {
+      await service.create({ subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-18' }, user);
+
+      expect(formatDateOnly(repository.create.mock.calls[0][0].writtenAt!)).toBe('2026-11-18');
+    });
+
+    it('rejects a letter written after it was received', async () => {
+      await expect(
+        service.create({ subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-21' }, user),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('previewDeadline', () => {
+    it('moves the deadline past a weekend', () => {
+      // 2026-11-07 + 14 days = Saturday 21 Nov, so the deadline is Monday 23 Nov.
+      expect(service.previewDeadline({ receivedAt: '2026-11-07' })).toEqual({
+        receivedAt: '2026-11-07',
+        dueAt: '2026-11-23',
+        maxExtendedDueAt: '2027-01-07',
+      });
+    });
+
+    it('rejects a future receipt date', () => {
+      expect(() => service.previewDeadline({ receivedAt: '2026-11-22' })).toThrow(BadRequestException);
+    });
+  });
+
+  describe('checkCaseNumber', () => {
+    beforeEach(() => {
+      repository.caseNumberExists = vi.fn().mockResolvedValue(false);
+      repository.sequenceNumberExists = vi.fn().mockResolvedValue(false);
+    });
+
+    it('reports a free number', async () => {
+      await expect(service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.600.2026' })).resolves.toEqual({
+        caseNumber: 'BKS.IV.1431.600.2026',
+        available: true,
+        conflict: null,
+      });
+      expect(repository.sequenceNumberExists.mock.calls).toEqual([[2026, 600, undefined]]);
+    });
+
+    it('reports a taken case number, ignoring the case being edited', async () => {
+      repository.caseNumberExists.mockResolvedValue(true);
+
+      const result = await service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.590.2026', exceptId: 'case-1' });
+
+      expect(result).toMatchObject({ available: false, conflict: 'CASE_NUMBER_TAKEN' });
+      expect(repository.caseNumberExists.mock.calls).toEqual([['BKS.IV.1431.590.2026', 'case-1']]);
+    });
+
+    it('reports a sequence number used by another case of the year', async () => {
+      repository.sequenceNumberExists.mockResolvedValue(true);
+
+      await expect(service.checkCaseNumber({ caseNumber: 'WIM.590.2026' })).resolves.toMatchObject({
+        available: false,
+        conflict: 'SEQUENCE_NUMBER_TAKEN',
+      });
+    });
+
+    it('skips the sequence check when the number is of another year than the case', async () => {
+      await service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.590.2025', year: 2026 });
+      expect(repository.sequenceNumberExists.mock.calls).toEqual([]);
     });
   });
 
@@ -287,6 +357,16 @@ describe('CasesService', () => {
         caseNumber: 'BKS.IV.1431.601.2026',
         sequenceNumber: 601,
       });
+    });
+
+    it('clears the date the letter was written', async () => {
+      await service.update('case-1', { writtenAt: null as unknown as string });
+      expect(repository.update.mock.calls[0][2].writtenAt).toBeNull();
+    });
+
+    it('rejects a receipt date before the stored date the letter was written', async () => {
+      repository.findById.mockResolvedValue(caseRecord({ writtenAt: d('2026-11-05') }));
+      await expect(service.update('case-1', { receivedAt: '2026-11-04' })).rejects.toThrow(BadRequestException);
     });
 
     it('refuses to clear required fields', async () => {

@@ -42,7 +42,9 @@ model Case {
   /// Text of the request as verified by the official; used for search and drafting.
   requestText      String?    @map("request_text")
   receivedAt       DateTime   @map("received_at") @db.Date
-  dueAt            DateTime   @map("due_at") @db.Date
+  /// Date the requester wrote the letter; informational, the deadline runs from `receivedAt`.
+  writtenAt        DateTime?  @map("written_at") @db.Date
+  dueAt          DateTime   @map("due_at") @db.Date
   extendedDueAt    DateTime?  @map("extended_due_at") @db.Date
   /// extendedDueAt ?? dueAt, stored so the register can be sorted by the deadline in force.
   effectiveDueAt   DateTime   @map("effective_due_at") @db.Date

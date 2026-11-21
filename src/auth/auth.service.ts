@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import type { User } from '../generated/prisma/client.js';
 import { UserAlreadyExistsError } from '../users/errors/user-already-exists.error.js';
 import { UsersRepository } from '../users/users.repository.js';
+import type { JwtPayload } from './auth-user.js';
 import type { AuthResponseDto } from './dto/auth-response.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
@@ -48,7 +49,8 @@ export class AuthService {
   }
 
   private async buildResponse(user: User): Promise<AuthResponseDto> {
-    const accessToken = await this.jwtService.signAsync({ sub: user.id, email: user.email });
+    const payload: JwtPayload = { sub: user.id, email: user.email };
+    const accessToken = await this.jwtService.signAsync(payload);
     return { accessToken };
   }
 }

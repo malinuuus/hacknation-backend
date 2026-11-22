@@ -4,41 +4,76 @@ const asLatin1 = (utf8: string) => Buffer.from(utf8, 'utf8').toString('latin1');
 
 describe('normalizeUploadFileName', () => {
   it('repairs UTF-8 names that multer decoded as Latin-1', () => {
-    expect(normalizeUploadFileName(asLatin1('Wniosek – żłobek.pdf'))).toBe('Wniosek – żłobek.pdf');
+    // arrange
+    const garbled = asLatin1('Wniosek – żłobek.pdf');
+
+    // act
+    const result = normalizeUploadFileName(garbled);
+
+    // assert
+    expect(result).toBe('Wniosek – żłobek.pdf');
   });
 
-  it('keeps names that are already correct', () => {
-    expect(normalizeUploadFileName('Wniosek - BKS.IV.1431.590.2026.pdf')).toBe('Wniosek - BKS.IV.1431.590.2026.pdf');
-    expect(normalizeUploadFileName('Odpowiedź WIM.docx')).toBe('Odpowiedź WIM.docx');
+  it.each(['Wniosek - BKS.IV.1431.590.2026.pdf', 'Odpowiedź WIM.docx'])('keeps the correct name %s', (name) => {
+    // act
+    const result = normalizeUploadFileName(name);
+
+    // assert
+    expect(result).toBe(name);
   });
 
-  it('strips directories, control characters and quotes', () => {
-    expect(normalizeUploadFileName('..\\..\\C:\\temp\\x"y\u0000.pdf')).toBe('xy.pdf');
-    expect(normalizeUploadFileName('../../etc/passwd')).toBe('passwd');
+  it.each([
+    ['..\\..\\C:\\temp\\x"y\u0000.pdf', 'xy.pdf'],
+    ['../../etc/passwd', 'passwd'],
+  ])('strips directories, control characters and quotes from %s', (name, expected) => {
+    // act
+    const result = normalizeUploadFileName(name);
+
+    // assert
+    expect(result).toBe(expected);
   });
 
-  it('falls back to a default name', () => {
-    expect(normalizeUploadFileName('..')).toBe('dokument');
-    expect(normalizeUploadFileName('   ')).toBe('dokument');
+  it.each(['..', '   '])('falls back to a default name for "%s"', (name) => {
+    // act
+    const result = normalizeUploadFileName(name);
+
+    // assert
+    expect(result).toBe('dokument');
   });
 
   it('keeps the end (with the extension) of very long names', () => {
-    const name = normalizeUploadFileName(`${'a'.repeat(300)}.pdf`);
-    expect(name).toHaveLength(200);
-    expect(name.endsWith('.pdf')).toBe(true);
+    // arrange
+    const longName = `${'a'.repeat(300)}.pdf`;
+
+    // act
+    const result = normalizeUploadFileName(longName);
+
+    // assert
+    expect(result).toHaveLength(200);
+    expect(result.endsWith('.pdf')).toBe(true);
   });
 });
 
 describe('attachmentContentDisposition', () => {
   it('includes an ASCII fallback and the encoded UTF-8 name', () => {
-    expect(attachmentContentDisposition('Odpowiedź (WIM).pdf')).toBe(
-      `attachment; filename="Odpowiedz (WIM).pdf"; filename*=UTF-8''Odpowied%C5%BA%20%28WIM%29.pdf`,
-    );
-  });
-});
+    // arrange
+    const name = 'Odpowiedź (WIM).pdf';
 
-describe('attachmentContentDisposition fallback', () => {
+    // act
+    const result = attachmentContentDisposition(name);
+
+    // assert
+    expect(result).toBe(`attachment; filename="Odpowiedz (WIM).pdf"; filename*=UTF-8''Odpowied%C5%BA%20%28WIM%29.pdf`);
+  });
+
   it('transliterates ł, which has no Unicode decomposition', () => {
-    expect(attachmentContentDisposition('Żłobek.pdf')).toMatch(/^attachment; filename="Zlobek.pdf";/);
+    // arrange
+    const name = 'Żłobek.pdf';
+
+    // act
+    const result = attachmentContentDisposition(name);
+
+    // assert
+    expect(result).toMatch(/^attachment; filename="Zlobek.pdf";/);
   });
 });

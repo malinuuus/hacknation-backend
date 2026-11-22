@@ -3,7 +3,6 @@ import { AiErrorCode } from '../enums/ai-error-code.enum.js';
 import { AiNotConfiguredError } from '../errors/ai-not-configured.error.js';
 import { AiRequestFailedError } from '../errors/ai-request-failed.error.js';
 
-/** Translates AI domain errors into HTTP exceptions with a `code`; returns other errors unchanged. */
 export function toAiHttpError(error: unknown): unknown {
   if (error instanceof AiNotConfiguredError) {
     return new ServiceUnavailableException({

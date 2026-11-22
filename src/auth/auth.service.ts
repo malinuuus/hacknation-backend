@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import type { User } from '../generated/prisma/client.js';
 import { UserAlreadyExistsError } from '../users/errors/user-already-exists.error.js';
-import { UsersRepository } from '../users/users.repository.js';
+import { UsersService } from '../users/users.service.js';
 import type { JwtPayload } from './interfaces/jwt-payload.interface.js';
 import type { AuthResponseDto } from './dto/auth-response.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
@@ -18,7 +18,7 @@ export class AuthService {
   private readonly dummyHash = bcrypt.hash('dummy-password-for-timing', BCRYPT_SALT_ROUNDS);
 
   constructor(
-    private readonly usersRepository: UsersRepository,
+    private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -26,7 +26,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
 
     try {
-      const user = await this.usersRepository.create({ email: dto.email, passwordHash });
+      const user = await this.usersService.create({ email: dto.email, passwordHash });
       return this.buildResponse(user);
     } catch (error) {
       if (error instanceof UserAlreadyExistsError) {
@@ -37,7 +37,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
-    const user = await this.usersRepository.findByEmail(dto.email);
+    const user = await this.usersService.findByEmail(dto.email);
 
     const passwordValid = await bcrypt.compare(dto.password, user?.passwordHash ?? (await this.dummyHash));
 

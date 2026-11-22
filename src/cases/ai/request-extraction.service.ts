@@ -7,8 +7,8 @@ import {
   type RequestExtractionOutput,
   requestExtractionSchema,
 } from '../../ai/prompts/request-extraction.prompt.js';
-import { DepartmentsRepository } from '../../departments/departments.repository.js';
-import type { Department } from '../../generated/prisma/client.js';
+import type { DepartmentDto } from '../../departments/dto/department-response.dto.js';
+import { DepartmentsService } from '../../departments/departments.service.js';
 import { KnowledgeCategory } from '../../generated/prisma/enums.js';
 import type { KnowledgeChunkMatch } from '../../knowledge/interfaces/knowledge-chunk-match.interface.js';
 import { KnowledgeRetriever } from '../../knowledge/knowledge-retriever.service.js';
@@ -50,7 +50,7 @@ export class RequestExtractionService {
   constructor(
     private readonly llm: LlmService,
     private readonly retriever: KnowledgeRetriever,
-    private readonly departmentsRepository: DepartmentsRepository,
+    private readonly departmentsService: DepartmentsService,
   ) {}
 
   isAvailable(): boolean {
@@ -62,7 +62,7 @@ export class RequestExtractionService {
    * @throws {AiRequestFailedError}
    */
   async extract(input: { fileName: string; text: string }): Promise<RequestExtraction> {
-    const departments = await this.departmentsRepository.findMany({ includeInactive: false });
+    const departments = await this.departmentsService.list({ includeInactive: false });
     const knowledge = await this.findContext(input.text);
 
     const output = await this.llm.structured(
@@ -96,7 +96,7 @@ export class RequestExtractionService {
 /** Checks the model's answer against the source text and the department list. Exported for tests. */
 export function toRequestExtraction(
   output: RequestExtractionOutput,
-  departments: Pick<Department, 'id' | 'symbol' | 'name'>[],
+  departments: Pick<DepartmentDto, 'id' | 'symbol' | 'name'>[],
   sourceText: string,
 ): RequestExtraction {
   const source = normalizeForMatch(sourceText);

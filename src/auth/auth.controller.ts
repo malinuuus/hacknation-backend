@@ -1,9 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
-  ApiConflictResponse,
   ApiCookieAuth,
-  ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -16,7 +14,6 @@ import { AuthService, type IssuedSession } from './auth.service.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
-import { RegisterDto } from './dto/register.dto.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import type { AuthUser } from './interfaces/auth-user.interface.js';
 
@@ -27,16 +24,6 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly authCookieService: AuthCookieService,
   ) {}
-
-  // TODO: remove this endpoint in production, it's only for testing the cookie-based auth
-  @Post('register')
-  @ApiOperation({ summary: 'Register a new account and start a session (sets the access token cookie)' })
-  @ApiCreatedResponse({ type: AuthResponseDto, description: 'Account created' })
-  @ApiBadRequestResponse({ description: 'Invalid request body' })
-  @ApiConflictResponse({ description: 'Email is already registered' })
-  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) response: Response): Promise<AuthResponseDto> {
-    return this.startSession(await this.authService.register(dto), response);
-  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

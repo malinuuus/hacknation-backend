@@ -1,13 +1,11 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import type { User } from '../generated/prisma/client.js';
-import { UserAlreadyExistsError } from '../users/errors/user-already-exists.error.js';
 import { UsersService } from '../users/users.service.js';
 import type { AuthUser } from './interfaces/auth-user.interface.js';
 import type { JwtPayload } from './interfaces/jwt-payload.interface.js';
 import type { LoginDto } from './dto/login.dto.js';
-import type { RegisterDto } from './dto/register.dto.js';
 
 const BCRYPT_SALT_ROUNDS = 12;
 
@@ -26,20 +24,6 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
   ) {}
-
-  async register(dto: RegisterDto): Promise<IssuedSession> {
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_SALT_ROUNDS);
-
-    try {
-      const user = await this.usersService.create({ email: dto.email, passwordHash });
-      return this.issueSession(user);
-    } catch (error) {
-      if (error instanceof UserAlreadyExistsError) {
-        throw new ConflictException('Email is already registered');
-      }
-      throw error;
-    }
-  }
 
   async login(dto: LoginDto): Promise<IssuedSession> {
     const user = await this.usersService.findByEmail(dto.email);

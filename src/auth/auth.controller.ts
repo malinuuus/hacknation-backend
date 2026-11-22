@@ -1,39 +1,73 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
+  ApiCookieAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AuthService } from './auth.service.js';
+import type { Response } from 'express';
+import { ACCESS_TOKEN_COOKIE, AuthCookieService } from './auth-cookie.service.js';
+import { AuthService, type IssuedSession } from './auth.service.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import type { AuthUser } from './interfaces/auth-user.interface.js';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly authCookieService: AuthCookieService,
+  ) {}
 
+  // TODO: remove this endpoint in production, it's only for testing the cookie-based auth
   @Post('register')
-  @ApiOperation({ summary: 'Register a new account' })
+  @ApiOperation({ summary: 'Register a new account and start a session (sets the access token cookie)' })
   @ApiCreatedResponse({ type: AuthResponseDto, description: 'Account created' })
   @ApiBadRequestResponse({ description: 'Invalid request body' })
   @ApiConflictResponse({ description: 'Email is already registered' })
-  register(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
-    return this.authService.register(dto);
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) response: Response): Promise<AuthResponseDto> {
+    return this.startSession(await this.authService.register(dto), response);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Log in with email and password' })
+  @ApiOperation({ summary: 'Log in with email and password (sets the access token cookie)' })
   @ApiOkResponse({ type: AuthResponseDto, description: 'Logged in' })
   @ApiBadRequestResponse({ description: 'Invalid request body' })
   @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
-  login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
-    return this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response): Promise<AuthResponseDto> {
+    return this.startSession(await this.authService.login(dto), response);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Log out (clears the access token cookie)' })
+  @ApiNoContentResponse({ description: 'Logged out' })
+  logout(@Res({ passthrough: true }) response: Response): void {
+    this.authCookieService.clear(response);
+  }
+
+  @Get('me')
+  @ApiCookieAuth(ACCESS_TOKEN_COOKIE)
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get the signed-in user' })
+  @ApiOkResponse({ type: AuthResponseDto, description: 'The signed-in user' })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid or expired session' })
+  me(@CurrentUser() user: AuthUser): AuthResponseDto {
+    return { id: user.id, email: user.email };
+  }
+
+  private startSession({ user, accessToken }: IssuedSession, response: Response): AuthResponseDto {
+    this.authCookieService.set(response, accessToken);
+    return user;
   }
 }

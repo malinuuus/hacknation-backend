@@ -1,5 +1,7 @@
 import { plainToInstance, Transform } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -12,7 +14,7 @@ import {
   MinLength,
   validateSync,
 } from 'class-validator';
-import { NodeEnv } from './environment.enum.js';
+import { CookieSameSite, NodeEnv } from './environment.enum.js';
 
 export class EnvironmentVariables {
   @IsString()
@@ -38,6 +40,25 @@ export class EnvironmentVariables {
     message: 'JWT_EXPIRES_IN must be a number of seconds or a duration such as "15m", "12h" or "7d"',
   })
   JWT_EXPIRES_IN: string;
+
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      : value,
+  )
+  @IsArray()
+  @ArrayNotEmpty()
+  @Matches(/^https?:\/\/[^/\s]+$/, {
+    each: true,
+    message: 'CORS_ORIGINS must list origins such as "https://app.example.com" (scheme and host, no path)',
+  })
+  CORS_ORIGINS: string[] = ['http://localhost:5173'];
+
+  @IsEnum(CookieSameSite)
+  AUTH_COOKIE_SAME_SITE: CookieSameSite = CookieSameSite.Lax;
 
   /** Prefix of generated case numbers, e.g. BKS.IV.1431 → BKS.IV.1431.590.2026. */
   @IsString()

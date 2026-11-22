@@ -19,7 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
@@ -35,6 +35,7 @@ import {
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { ACCESS_TOKEN_COOKIE } from '../auth/auth-cookie.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { attachmentContentDisposition } from '../cases/helpers/file-name.helper.js';
@@ -50,7 +51,7 @@ import { UpdateKnowledgeDocumentDto } from './dto/update-knowledge-document.dto.
 import { KnowledgeService } from './knowledge.service.js';
 
 @ApiTags('Knowledge base')
-@ApiBearerAuth()
+@ApiCookieAuth(ACCESS_TOKEN_COOKIE)
 @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
 @UseGuards(JwtAuthGuard)
 @Controller('knowledge')

@@ -2,7 +2,7 @@ import { Body, Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Use
 import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
-  ApiBearerAuth,
+  ApiCookieAuth,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -11,6 +11,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { toAiHttpError } from '../../ai/helpers/ai-http-error.helper.js';
+import { ACCESS_TOKEN_COOKIE } from '../../auth/auth-cookie.service.js';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard.js';
 import { DraftResponseDto, GenerateDraftResponseDto } from '../dto/draft-response.dto.js';
 import { RedactionSuggestionsRequestDto, RedactionSuggestionsResponseDto } from '../dto/redaction-suggestions.dto.js';
@@ -18,7 +19,7 @@ import { DraftResponseService } from './draft-response.service.js';
 import { RedactionSuggestionsService } from './redaction-suggestions.service.js';
 
 @ApiTags('Cases – AI')
-@ApiBearerAuth()
+@ApiCookieAuth(ACCESS_TOKEN_COOKIE)
 @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
 @ApiServiceUnavailableResponse({ description: 'AI not configured; `code` is AI_NOT_CONFIGURED' })
 @ApiBadGatewayResponse({ description: 'The AI request failed or timed out; `code` is AI_REQUEST_FAILED' })

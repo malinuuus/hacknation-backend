@@ -1,12 +1,13 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { ACCESS_TOKEN_COOKIE } from '../auth/auth-cookie.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { DepartmentsService } from './departments.service.js';
 import { DepartmentDto } from './dto/department-response.dto.js';
 import { ListDepartmentsQueryDto } from './dto/list-departments-query.dto.js';
 
 @ApiTags('Departments')
-@ApiBearerAuth()
+@ApiCookieAuth(ACCESS_TOKEN_COOKIE)
 @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
 @UseGuards(JwtAuthGuard)
 @Controller('departments')

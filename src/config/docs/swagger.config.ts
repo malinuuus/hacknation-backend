@@ -1,12 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ACCESS_TOKEN_COOKIE } from '../../auth/auth-cookie.service.js';
 
 export const setupSwagger = (app: INestApplication) => {
-  // TODO: Add more details to the swagger documentation, like version, contact, etc.
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('API')
-    .setDescription('API documentation')
-    .addBearerAuth()
+    .setTitle('UDIP Assistant API')
+    .setDescription('Documentation for the UDIP Assistant API')
+    .addCookieAuth(ACCESS_TOKEN_COOKIE)
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

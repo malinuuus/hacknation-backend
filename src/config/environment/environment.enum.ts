@@ -3,3 +3,9 @@ export enum NodeEnv {
   Test = 'test',
   Production = 'production',
 }
+
+export enum CookieSameSite {
+  Lax = 'lax',
+  Strict = 'strict',
+  None = 'none',
+}

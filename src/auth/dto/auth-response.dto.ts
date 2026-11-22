@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AuthResponseDto {
-  @ApiProperty({
-    description: 'JWT access token. Send it as `Authorization: Bearer <token>`.',
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-  })
-  accessToken: string;
+  @ApiProperty({ format: 'uuid', example: '3f6c1e2a-9b8d-4c7e-a1f0-2d5b6e8c9a10' })
+  id: string;
+
+  @ApiProperty({ format: 'email', example: 'urzednik@example.com' })
+  email: string;
 }

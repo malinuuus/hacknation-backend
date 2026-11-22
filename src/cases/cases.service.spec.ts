@@ -43,6 +43,7 @@ function caseRecord(overrides: Partial<CaseDetailRecord> = {}): CaseDetailRecord
     statusChanges: [],
     departments: [],
     documents: [],
+    questions: [],
     ...overrides,
   };
 }

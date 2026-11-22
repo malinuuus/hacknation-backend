@@ -51,6 +51,12 @@ export function toCaseDetailDto(record: CaseDetailRecord, today: Date): CaseDeta
       requestedAt: formatDateOnly(link.requestedAt),
       answeredAt: formatOptional(link.answeredAt),
     })),
+    questions: record.questions.map((question) => ({
+      id: question.id,
+      position: question.position,
+      text: question.text,
+      departmentId: question.departmentId,
+    })),
     documents: record.documents.map(toCaseDocumentDto),
     createdBy: record.createdBy,
     createdAt: record.createdAt,

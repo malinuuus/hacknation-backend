@@ -24,6 +24,20 @@ export class CaseDepartmentDto {
   answeredAt: string | null;
 }
 
+export class CaseQuestionDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ description: 'Order in the request, from 0' })
+  position: number;
+
+  @ApiProperty()
+  text: string;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true, description: 'Department that answers the question' })
+  departmentId: string | null;
+}
+
 /** One row of the case register ("kalendarz wniosków"). */
 export class CaseSummaryDto {
   @ApiProperty({ format: 'uuid' })
@@ -136,6 +150,9 @@ export class CaseDetailDto extends CaseSummaryDto {
 
   @ApiProperty({ type: [CaseDepartmentDto], description: 'Departments asked for information, with dates' })
   departmentRequests: CaseDepartmentDto[];
+
+  @ApiProperty({ type: [CaseQuestionDto], description: 'Questions of the request, in order' })
+  questions: CaseQuestionDto[];
 
   @ApiProperty({ type: [CaseDocumentDto], description: 'Attached files, oldest first' })
   documents: CaseDocumentDto[];

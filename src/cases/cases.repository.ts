@@ -13,6 +13,7 @@ import { DepartmentNotFoundError } from './errors/department-not-found.error.js'
 import { SequenceNumberTakenError } from './errors/sequence-number-taken.error.js';
 import type { CaseListFilter } from './interfaces/case-list-filter.interface.js';
 import type { CaseListResult } from './interfaces/case-list-result.interface.js';
+import type { CaseQuestionData } from './interfaces/case-question-data.interface.js';
 import type { CaseStatusChangeData } from './interfaces/case-status-change-data.interface.js';
 import type { CreateCaseData } from './interfaces/create-case-data.interface.js';
 import type { SetCaseDepartmentsData } from './interfaces/set-case-departments-data.interface.js';
@@ -34,6 +35,7 @@ const detailInclude = {
   statusChanges: { include: { changedBy: userRef }, orderBy: { createdAt: 'asc' } },
   departments: { include: { department: true }, orderBy: { department: { symbol: 'asc' } } },
   documents: { ...caseDocumentSummaryArgs, orderBy: { createdAt: 'asc' } },
+  questions: { orderBy: { position: 'asc' } },
 } satisfies Prisma.CaseInclude;
 
 export type CaseSummaryRecord = Prisma.CaseGetPayload<{ include: typeof summaryInclude }>;
@@ -179,6 +181,37 @@ export class CasesRepository {
       }
       if (isKnownError(error, 'P2025')) {
         throw (await this.exists(id)) ? new CaseStatusChangedError(id) : new CaseNotFoundError(id);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Replaces the questions of a case, keeping the given order.
+   *
+   * @throws {CaseNotFoundError}
+   * @throws {DepartmentNotFoundError} when a department id does not match a department.
+   */
+  async setQuestions(id: string, questions: CaseQuestionData[]): Promise<CaseDetailRecord> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.caseQuestion.deleteMany({ where: { caseId: id } });
+        await tx.caseQuestion.createMany({
+          data: questions.map((question, position) => ({
+            caseId: id,
+            position,
+            text: question.text,
+            departmentId: question.departmentId,
+          })),
+        });
+        return tx.case.findUniqueOrThrow({ where: { id }, include: detailInclude });
+      });
+    } catch (error) {
+      if (isKnownError(error, 'P2003')) {
+        throw (await this.exists(id)) ? new DepartmentNotFoundError() : new CaseNotFoundError(id);
+      }
+      if (isKnownError(error, 'P2025')) {
+        throw new CaseNotFoundError(id);
       }
       throw error;
     }

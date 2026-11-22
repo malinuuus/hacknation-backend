@@ -72,6 +72,7 @@ model Case {
   @@unique([year, sequenceNumber])
   @@index([year, receivedAt])
   @@index([year, effectiveDueAt])
+  @@index([effectiveDueAt])
   @@map("cases")
 }
 

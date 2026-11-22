@@ -278,6 +278,15 @@ export class CasesRepository {
     return { items, total };
   }
 
+  /** Cases whose deadline in force (`effectiveDueAt`) is within `from`..`to`, inclusive; any status and year. */
+  findByDeadlineRange(from: Date, to: Date): Promise<CaseSummaryRecord[]> {
+    return this.prisma.case.findMany({
+      where: { effectiveDueAt: { gte: from, lte: to } },
+      include: summaryInclude,
+      orderBy: [{ effectiveDueAt: 'asc' }, { receivedAt: 'asc' }, { sequenceNumber: 'asc' }],
+    });
+  }
+
   findById(id: string): Promise<CaseDetailRecord | null> {
     return this.prisma.case.findUnique({ where: { id }, include: detailInclude });
   }

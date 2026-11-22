@@ -47,6 +47,7 @@ import { DeadlinePreviewQueryDto, DeadlinePreviewResponseDto } from './dto/deadl
 import { ExtendDeadlineDto } from './dto/extend-deadline.dto.js';
 import { ListCasesQueryDto } from './dto/list-cases-query.dto.js';
 import { SetCaseDepartmentsDto } from './dto/set-case-departments.dto.js';
+import { SetCaseQuestionsDto } from './dto/set-case-questions.dto.js';
 import { UpdateCaseDepartmentDto } from './dto/update-case-department.dto.js';
 import { UpdateCaseDto } from './dto/update-case.dto.js';
 
@@ -245,6 +246,20 @@ export class CasesController {
     @CurrentUser() user: AuthUser,
   ): Promise<CaseDetailDto> {
     return this.casesService.setDepartments(id, dto, user);
+  }
+
+  @Put(':id/questions')
+  @ApiOperation({
+    summary: 'Set the questions of a request',
+    description:
+      'Replaces the list with the questions confirmed by the official (e.g. suggested by `POST /cases/analyze`), ' +
+      'each optionally assigned to the department that answers it.',
+  })
+  @ApiOkResponse({ type: CaseDetailDto })
+  @ApiBadRequestResponse({ description: 'Invalid body or unknown department' })
+  @ApiNotFoundResponse({ description: 'Case not found' })
+  setQuestions(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetCaseQuestionsDto): Promise<CaseDetailDto> {
+    return this.casesService.setQuestions(id, dto);
   }
 
   @Patch(':id/departments/:departmentId')

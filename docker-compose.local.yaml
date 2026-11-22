@@ -2,7 +2,7 @@ name: hacknation-local
 
 services:
   postgres:
-    image: postgres:18.7-alpine3.24
+    image: pgvector/pgvector:pg18
     container_name: hacknation-postgres
     restart: unless-stopped
     environment:

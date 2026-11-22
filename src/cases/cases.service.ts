@@ -15,6 +15,7 @@ import type { DeadlinePreviewQueryDto, DeadlinePreviewResponseDto } from './dto/
 import type { ExtendDeadlineDto } from './dto/extend-deadline.dto.js';
 import type { ListCasesQueryDto } from './dto/list-cases-query.dto.js';
 import type { SetCaseDepartmentsDto } from './dto/set-case-departments.dto.js';
+import type { SetCaseQuestionsDto } from './dto/set-case-questions.dto.js';
 import type { UpdateCaseDepartmentDto } from './dto/update-case-department.dto.js';
 import type { UpdateCaseDto } from './dto/update-case.dto.js';
 import { CaseConflict } from './enums/case-conflict.enum.js';
@@ -306,6 +307,19 @@ export class CasesService {
         statusChange,
       });
       return toCaseDetailDto(updated, today);
+    } catch (error) {
+      throw this.toHttpError(error);
+    }
+  }
+
+  /** Stores the questions confirmed by the official, e.g. the ones suggested by `POST /cases/analyze`. */
+  async setQuestions(id: string, dto: SetCaseQuestionsDto): Promise<CaseDetailDto> {
+    try {
+      const updated = await this.casesRepository.setQuestions(
+        id,
+        dto.questions.map((question) => ({ text: question.text, departmentId: question.departmentId ?? null })),
+      );
+      return toCaseDetailDto(updated, todayInOfficeTimeZone());
     } catch (error) {
       throw this.toHttpError(error);
     }

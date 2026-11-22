@@ -1,5 +1,17 @@
-import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNotEmpty, IsNumber, IsString, Matches, Max, Min, MinLength, validateSync } from 'class-validator';
+import { plainToInstance, Transform } from 'class-transformer';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+  MinLength,
+  validateSync,
+} from 'class-validator';
 import { NodeEnv } from './environment.enum.js';
 
 export class EnvironmentVariables {
@@ -42,6 +54,46 @@ export class EnvironmentVariables {
   @Min(1)
   @Max(200)
   UPLOAD_MAX_FILE_SIZE_MB: number = 20;
+
+  /** OpenAI API key; without it the app runs without AI (pattern matching only, AI endpoints answer 503). */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  OPENAI_API_KEY?: string;
+
+  /** Chat model used for extraction, drafting and redaction suggestions. */
+  @IsString()
+  @IsNotEmpty()
+  OPENAI_MODEL: string = 'gpt-4.1-mini';
+
+  /** Embedding model for the knowledge base; vectors are stored with 1536 dimensions. */
+  @IsString()
+  @IsNotEmpty()
+  OPENAI_EMBEDDING_MODEL: string = 'text-embedding-3-small';
+
+  /** Timeout of one OpenAI request, in milliseconds (the frontend gives up after 60 s). */
+  @IsInt()
+  @Min(1000)
+  @Max(300000)
+  OPENAI_TIMEOUT_MS: number = 45000;
+
+  /** Number of knowledge base fragments passed to the model as context. */
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  RAG_TOP_K: number = 6;
+
+  /** Size of one knowledge base fragment, in characters. */
+  @IsInt()
+  @Min(200)
+  @Max(8000)
+  RAG_CHUNK_SIZE: number = 1000;
+
+  /** Overlap between consecutive fragments, in characters. */
+  @IsInt()
+  @Min(0)
+  @Max(2000)
+  RAG_CHUNK_OVERLAP: number = 150;
 }
 
 export const validate = (config: Record<string, unknown>) => {

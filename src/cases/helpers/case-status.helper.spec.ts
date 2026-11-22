@@ -9,7 +9,11 @@ describe('case status transitions', () => {
     [CaseStatus.RESPONSE_PREPARED, CaseStatus.RESPONSE_SENT],
     [CaseStatus.RESPONSE_SENT, CaseStatus.RESPONSE_PREPARED],
   ])('allows %s → %s', (from, to) => {
-    expect(canTransition(from, to)).toBe(true);
+    // act
+    const result = canTransition(from, to);
+
+    // assert
+    expect(result).toBe(true);
   });
 
   it.each([
@@ -18,17 +22,29 @@ describe('case status transitions', () => {
     [CaseStatus.SENT_TO_DEPARTMENTS, CaseStatus.RESPONSE_SENT],
     [CaseStatus.RESPONSE_SENT, CaseStatus.NEW],
   ])('rejects %s → %s', (from, to) => {
-    expect(canTransition(from, to)).toBe(false);
+    // act
+    const result = canTransition(from, to);
+
+    // assert
+    expect(result).toBe(false);
   });
 
-  it('lets every open status reach RESPONSE_PREPARED', () => {
-    for (const status of [CaseStatus.NEW, CaseStatus.SENT_TO_DEPARTMENTS]) {
-      expect(allowedTransitions(status)).toContain(CaseStatus.RESPONSE_PREPARED);
-    }
+  it.each([CaseStatus.NEW, CaseStatus.SENT_TO_DEPARTMENTS])('lets %s reach RESPONSE_PREPARED', (status) => {
+    // act
+    const result = allowedTransitions(status);
+
+    // assert
+    expect(result).toContain(CaseStatus.RESPONSE_PREPARED);
   });
 
-  it('allows deadline changes only before the response is sent', () => {
-    expect(canChangeDeadline(CaseStatus.RESPONSE_PREPARED)).toBe(true);
-    expect(canChangeDeadline(CaseStatus.RESPONSE_SENT)).toBe(false);
+  it.each([
+    [CaseStatus.RESPONSE_PREPARED, true],
+    [CaseStatus.RESPONSE_SENT, false],
+  ])('allows deadline changes only before the response is sent (%s)', (status, expected) => {
+    // act
+    const result = canChangeDeadline(status);
+
+    // assert
+    expect(result).toBe(expected);
   });
 });

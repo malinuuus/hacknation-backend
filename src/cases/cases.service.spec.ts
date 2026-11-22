@@ -43,6 +43,7 @@ function caseRecord(overrides: Partial<CaseDetailRecord> = {}): CaseDetailRecord
     statusChanges: [],
     departments: [],
     documents: [],
+    questions: [],
     ...overrides,
   };
 }
@@ -94,11 +95,13 @@ describe('CasesService', () => {
 
   describe('create', () => {
     it('computes the deadline and takes the sequence from an explicit case number', async () => {
-      await service.create(
-        { subject: 'Zwierzęta', receivedAt: '2026-08-19', caseNumber: 'BKS.IV.1431.543.2026' },
-        user,
-      );
+      // arrange
+      const dto = { subject: 'Zwierzęta', receivedAt: '2026-08-19', caseNumber: 'BKS.IV.1431.543.2026' };
 
+      // act
+      await service.create(dto, user);
+
+      // assert
       const data = repository.create.mock.calls[0][0];
       expect(formatDateOnly(data.dueAt)).toBe('2026-09-02');
       expect(data.year).toBe(2026);
@@ -108,67 +111,111 @@ describe('CasesService', () => {
     });
 
     it('attaches the request file and takes the request text from it', async () => {
-      await service.create({ subject: 'x', receivedAt: '2026-11-20' }, user, file);
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-20' };
 
+      // act
+      await service.create(dto, user, file);
+
+      // assert
       const data = repository.create.mock.calls[0][0];
       expect(data.requestText).toBe('Wnoszę o udostępnienie informacji');
       expect(data.document).toEqual({ storageKey: 'key-1' });
     });
 
     it('keeps the request text verified by the official', async () => {
-      await service.create({ subject: 'x', receivedAt: '2026-11-20', requestText: 'Poprawiona treść' }, user, file);
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-20', requestText: 'Poprawiona treść' };
 
+      // act
+      await service.create(dto, user, file);
+
+      // assert
       expect(repository.create.mock.calls[0][0].requestText).toBe('Poprawiona treść');
     });
 
     it('removes the stored file when the case cannot be saved', async () => {
+      // arrange
       repository.create.mockRejectedValue(new CaseNumberTakenError('BKS.IV.1431.1.2026'));
 
-      await expect(service.create({ subject: 'x', receivedAt: '2026-11-20' }, user, file)).rejects.toThrow(
-        ConflictException,
-      );
+      // act
+      const result = service.create({ subject: 'x', receivedAt: '2026-11-20' }, user, file);
+
+      // assert
+      await expect(result).rejects.toThrow(ConflictException);
       expect(documentsService.discard.mock.calls).toEqual([[upload]]);
     });
 
     it('generates the case number from the assigned sequence when none is given', async () => {
-      await service.create({ subject: 'x', receivedAt: '2026-11-20' }, user);
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-20' };
 
+      // act
+      await service.create(dto, user);
+
+      // assert
       const { caseNumber, sequenceNumber } = repository.create.mock.calls[0][0];
       expect(sequenceNumber).toBeUndefined();
       expect(typeof caseNumber === 'function' && caseNumber(7)).toBe('BKS.IV.1431.7.2026');
     });
 
     it('rejects a receipt date in the future', async () => {
-      await expect(service.create({ subject: 'x', receivedAt: '2026-11-22' }, user)).rejects.toThrow(
-        BadRequestException,
-      );
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-22' };
+
+      // act
+      const result = service.create(dto, user);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('maps a taken case number to 409 with a code', async () => {
+      // arrange
       repository.create.mockRejectedValue(new CaseNumberTakenError('BKS.IV.1431.1.2026'));
+
+      // act
       const error = await service.create({ subject: 'x', receivedAt: '2026-11-20' }, user).catch((e: unknown) => e);
 
+      // assert
       expect(error).toBeInstanceOf(ConflictException);
       expect((error as ConflictException).getResponse()).toMatchObject({ statusCode: 409, code: 'CASE_NUMBER_TAKEN' });
     });
 
     it('stores the date the letter was written', async () => {
-      await service.create({ subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-18' }, user);
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-18' };
 
+      // act
+      await service.create(dto, user);
+
+      // assert
       expect(formatDateOnly(repository.create.mock.calls[0][0].writtenAt!)).toBe('2026-11-18');
     });
 
     it('rejects a letter written after it was received', async () => {
-      await expect(
-        service.create({ subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-21' }, user),
-      ).rejects.toThrow(BadRequestException);
+      // arrange
+      const dto = { subject: 'x', receivedAt: '2026-11-20', writtenAt: '2026-11-21' };
+
+      // act
+      const result = service.create(dto, user);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('previewDeadline', () => {
     it('moves the deadline past a weekend', () => {
+      // arrange
       // 2026-11-07 + 14 days = Saturday 21 Nov, so the deadline is Monday 23 Nov.
-      expect(service.previewDeadline({ receivedAt: '2026-11-07' })).toEqual({
+      const dto = { receivedAt: '2026-11-07' };
+
+      // act
+      const result = service.previewDeadline(dto);
+
+      // assert
+      expect(result).toEqual({
         receivedAt: '2026-11-07',
         dueAt: '2026-11-23',
         maxExtendedDueAt: '2027-01-07',
@@ -176,7 +223,14 @@ describe('CasesService', () => {
     });
 
     it('rejects a future receipt date', () => {
-      expect(() => service.previewDeadline({ receivedAt: '2026-11-22' })).toThrow(BadRequestException);
+      // arrange
+      const dto = { receivedAt: '2026-11-22' };
+
+      // act
+      const act = () => service.previewDeadline(dto);
+
+      // assert
+      expect(act).toThrow(BadRequestException);
     });
   });
 
@@ -187,51 +241,73 @@ describe('CasesService', () => {
     });
 
     it('reports a free number', async () => {
-      await expect(service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.600.2026' })).resolves.toEqual({
-        caseNumber: 'BKS.IV.1431.600.2026',
-        available: true,
-        conflict: null,
-      });
+      // arrange
+      const dto = { caseNumber: 'BKS.IV.1431.600.2026' };
+
+      // act
+      const result = await service.checkCaseNumber(dto);
+
+      // assert
+      expect(result).toEqual({ caseNumber: 'BKS.IV.1431.600.2026', available: true, conflict: null });
       expect(repository.sequenceNumberExists.mock.calls).toEqual([[2026, 600, undefined]]);
     });
 
     it('reports a taken case number, ignoring the case being edited', async () => {
+      // arrange
       repository.caseNumberExists.mockResolvedValue(true);
 
+      // act
       const result = await service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.590.2026', exceptId: 'case-1' });
 
+      // assert
       expect(result).toMatchObject({ available: false, conflict: 'CASE_NUMBER_TAKEN' });
       expect(repository.caseNumberExists.mock.calls).toEqual([['BKS.IV.1431.590.2026', 'case-1']]);
     });
 
     it('reports a sequence number used by another case of the year', async () => {
+      // arrange
       repository.sequenceNumberExists.mockResolvedValue(true);
 
-      await expect(service.checkCaseNumber({ caseNumber: 'WIM.590.2026' })).resolves.toMatchObject({
-        available: false,
-        conflict: 'SEQUENCE_NUMBER_TAKEN',
-      });
+      // act
+      const result = await service.checkCaseNumber({ caseNumber: 'WIM.590.2026' });
+
+      // assert
+      expect(result).toMatchObject({ available: false, conflict: 'SEQUENCE_NUMBER_TAKEN' });
     });
 
     it('skips the sequence check when the number is of another year than the case', async () => {
-      await service.checkCaseNumber({ caseNumber: 'BKS.IV.1431.590.2025', year: 2026 });
+      // arrange
+      const dto = { caseNumber: 'BKS.IV.1431.590.2025', year: 2026 };
+
+      // act
+      await service.checkCaseNumber(dto);
+
+      // assert
       expect(repository.sequenceNumberExists.mock.calls).toEqual([]);
     });
   });
 
   describe('changeStatus', () => {
     it('rejects a transition the workflow does not allow', async () => {
-      await expect(service.changeStatus('case-1', { status: CaseStatus.RESPONSE_SENT }, user)).rejects.toThrow(
-        ConflictException,
-      );
+      // arrange
+      const dto = { status: CaseStatus.RESPONSE_SENT };
+
+      // act
+      const result = service.changeStatus('case-1', dto, user);
+
+      // assert
+      await expect(result).rejects.toThrow(ConflictException);
       expect(repository.changeStatus.mock.calls).toHaveLength(0);
     });
 
     it('records today as the response date when marking as sent', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ status: CaseStatus.RESPONSE_PREPARED }));
 
+      // act
       await service.changeStatus('case-1', { status: CaseStatus.RESPONSE_SENT, comment: 'ePUAP' }, user);
 
+      // assert
       const change = repository.changeStatus.mock.calls[0][1];
       expect(change).toMatchObject({
         fromStatus: CaseStatus.RESPONSE_PREPARED,
@@ -243,42 +319,65 @@ describe('CasesService', () => {
     });
 
     it('rejects a response date before receipt', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ status: CaseStatus.RESPONSE_PREPARED }));
-      await expect(
-        service.changeStatus('case-1', { status: CaseStatus.RESPONSE_SENT, respondedAt: '2026-11-01' }, user),
-      ).rejects.toThrow(BadRequestException);
+
+      // act
+      const result = service.changeStatus(
+        'case-1',
+        { status: CaseStatus.RESPONSE_SENT, respondedAt: '2026-11-01' },
+        user,
+      );
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a response date with any other status', async () => {
-      await expect(
-        service.changeStatus('case-1', { status: CaseStatus.RESPONSE_PREPARED, respondedAt: '2026-11-20' }, user),
-      ).rejects.toThrow(BadRequestException);
+      // arrange
+      const dto = { status: CaseStatus.RESPONSE_PREPARED, respondedAt: '2026-11-20' };
+
+      // act
+      const result = service.changeStatus('case-1', dto, user);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('clears the response date when a sent case is reopened', async () => {
+      // arrange
       repository.findById.mockResolvedValue(
         caseRecord({ status: CaseStatus.RESPONSE_SENT, respondedAt: d('2026-11-20') }),
       );
 
+      // act
       await service.changeStatus('case-1', { status: CaseStatus.RESPONSE_PREPARED }, user);
 
+      // assert
       expect(repository.changeStatus.mock.calls[0][1].fields).toEqual({ respondedAt: null });
     });
 
     it('returns 404 for an unknown case', async () => {
+      // arrange
       repository.findById.mockResolvedValue(null);
-      await expect(service.changeStatus('nope', { status: CaseStatus.RESPONSE_PREPARED }, user)).rejects.toThrow(
-        NotFoundException,
-      );
+
+      // act
+      const result = service.changeStatus('nope', { status: CaseStatus.RESPONSE_PREPARED }, user);
+
+      // assert
+      await expect(result).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('extendDeadline', () => {
     it('sets the new deadline and reason without changing the status', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ status: CaseStatus.SENT_TO_DEPARTMENTS }));
 
+      // act
       await service.extendDeadline('case-1', { extendedDueAt: '2026-12-15', reason: 'Dane z WIM' }, user);
 
+      // assert
       const change = repository.changeStatus.mock.calls[0][1];
       expect(change.fromStatus).toBe(CaseStatus.SENT_TO_DEPARTMENTS);
       expect(change.toStatus).toBe(CaseStatus.SENT_TO_DEPARTMENTS);
@@ -291,41 +390,59 @@ describe('CasesService', () => {
       ['not after the statutory deadline', '2026-11-23'],
       ['more than 2 months from receipt', '2027-01-11'],
     ])('rejects a date %s', async (_, extendedDueAt) => {
-      await expect(service.extendDeadline('case-1', { extendedDueAt, reason: 'x' }, user)).rejects.toThrow(
-        BadRequestException,
-      );
+      // act
+      const result = service.extendDeadline('case-1', { extendedDueAt, reason: 'x' }, user);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('does not extend an answered case', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ status: CaseStatus.RESPONSE_SENT }));
-      await expect(
-        service.extendDeadline('case-1', { extendedDueAt: '2026-12-15', reason: 'x' }, user),
-      ).rejects.toThrow(ConflictException);
+
+      // act
+      const result = service.extendDeadline('case-1', { extendedDueAt: '2026-12-15', reason: 'x' }, user);
+
+      // assert
+      await expect(result).rejects.toThrow(ConflictException);
     });
   });
 
   describe('cancelExtension', () => {
     it('restores the statutory deadline', async () => {
+      // arrange
       repository.findById.mockResolvedValue(
         caseRecord({ extendedDueAt: d('2026-12-15'), effectiveDueAt: d('2026-12-15'), extensionReason: 'x' }),
       );
 
+      // act
       await service.cancelExtension('case-1', user);
 
+      // assert
       const change = repository.changeStatus.mock.calls[0][1];
       expect(change.toStatus).toBe(CaseStatus.NEW);
       expect(change.fields).toEqual({ extendedDueAt: null, extensionReason: null, effectiveDueAt: d('2026-11-23') });
     });
 
     it('rejects a case without an extension', async () => {
-      await expect(service.cancelExtension('case-1', user)).rejects.toThrow(ConflictException);
+      // act
+      const result = service.cancelExtension('case-1', user);
+
+      // assert
+      await expect(result).rejects.toThrow(ConflictException);
     });
   });
 
   describe('update', () => {
     it('recomputes the deadline when the receipt date changes', async () => {
-      await service.update('case-1', { receivedAt: '2026-10-28' });
+      // arrange
+      const dto = { receivedAt: '2026-10-28' };
 
+      // act
+      await service.update('case-1', dto);
+
+      // assert
       const data = repository.update.mock.calls[0][2];
       expect(formatDateOnly(data.receivedAt!)).toBe('2026-10-28');
       expect(formatDateOnly(data.dueAt!)).toBe('2026-11-12'); // 11 Nov is a holiday
@@ -333,26 +450,47 @@ describe('CasesService', () => {
     });
 
     it('keeps the extended deadline in force when the receipt date changes', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ extendedDueAt: d('2026-12-15') }));
 
+      // act
       await service.update('case-1', { receivedAt: '2026-11-02' });
 
+      // assert
       expect(formatDateOnly(repository.update.mock.calls[0][2].effectiveDueAt!)).toBe('2026-12-15');
     });
 
     it('keeps the case in its year', async () => {
-      await expect(service.update('case-1', { receivedAt: '2025-12-30' })).rejects.toThrow(BadRequestException);
+      // arrange
+      const dto = { receivedAt: '2025-12-30' };
+
+      // act
+      const result = service.update('case-1', dto);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a receipt date that would invalidate the existing extension', async () => {
-      repository.findById.mockResolvedValue(caseRecord({ extendedDueAt: d('2026-12-15') }));
+      // arrange
       // Received 1 Oct allows extensions only until 1 Dec.
-      await expect(service.update('case-1', { receivedAt: '2026-10-01' })).rejects.toThrow(BadRequestException);
+      repository.findById.mockResolvedValue(caseRecord({ extendedDueAt: d('2026-12-15') }));
+
+      // act
+      const result = service.update('case-1', { receivedAt: '2026-10-01' });
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('syncs the sequence number with a new case number', async () => {
-      await service.update('case-1', { caseNumber: 'BKS.IV.1431.601.2026' });
+      // arrange
+      const dto = { caseNumber: 'BKS.IV.1431.601.2026' };
 
+      // act
+      await service.update('case-1', dto);
+
+      // assert
       expect(repository.update.mock.calls[0][2]).toMatchObject({
         caseNumber: 'BKS.IV.1431.601.2026',
         sequenceNumber: 601,
@@ -360,26 +498,48 @@ describe('CasesService', () => {
     });
 
     it('clears the date the letter was written', async () => {
-      await service.update('case-1', { writtenAt: null as unknown as string });
+      // arrange
+      const dto = { writtenAt: null as unknown as string };
+
+      // act
+      await service.update('case-1', dto);
+
+      // assert
       expect(repository.update.mock.calls[0][2].writtenAt).toBeNull();
     });
 
     it('rejects a receipt date before the stored date the letter was written', async () => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ writtenAt: d('2026-11-05') }));
-      await expect(service.update('case-1', { receivedAt: '2026-11-04' })).rejects.toThrow(BadRequestException);
+
+      // act
+      const result = service.update('case-1', { receivedAt: '2026-11-04' });
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
 
     it('refuses to clear required fields', async () => {
-      await expect(service.update('case-1', { subject: null as unknown as string })).rejects.toThrow(
-        BadRequestException,
-      );
+      // arrange
+      const dto = { subject: null as unknown as string };
+
+      // act
+      const result = service.update('case-1', dto);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('setDepartments', () => {
     it('moves a NEW case to SENT_TO_DEPARTMENTS in the same call', async () => {
-      await service.setDepartments('case-1', { departmentIds: ['dept-1'] }, user);
+      // arrange
+      const dto = { departmentIds: ['dept-1'] };
 
+      // act
+      await service.setDepartments('case-1', dto, user);
+
+      // assert
       const data = repository.setDepartments.mock.calls[0][1];
       expect(data.departmentIds).toEqual(['dept-1']);
       expect(formatDateOnly(data.requestedAt)).toBe('2026-11-21');
@@ -393,20 +553,26 @@ describe('CasesService', () => {
       ['the case is past NEW', CaseStatus.RESPONSE_PREPARED, ['dept-1']],
       ['the list is empty', CaseStatus.NEW, []],
     ])('leaves the status alone when %s', async (_, status, departmentIds) => {
+      // arrange
       repository.findById.mockResolvedValue(caseRecord({ status }));
 
+      // act
       await service.setDepartments('case-1', { departmentIds }, user);
 
+      // assert
       expect(repository.setDepartments.mock.calls[0][1].statusChange).toBeUndefined();
     });
   });
 
   describe('delete', () => {
     it('removes the stored files after deleting the case', async () => {
+      // arrange
       documentsRepository.findStorageKeysByCase.mockResolvedValue(['key-1', 'key-2']);
 
+      // act
       await service.delete('case-1');
 
+      // assert
       expect(repository.delete.mock.calls).toEqual([['case-1']]);
       expect(storage.deleteMany.mock.calls).toEqual([[['key-1', 'key-2']]]);
     });

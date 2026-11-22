@@ -3,6 +3,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CaseDocumentNotFoundError } from './errors/case-document-not-found.error.js';
 import { CaseNotFoundError } from './errors/case-not-found.error.js';
+import type { CaseDocumentKind } from '../generated/prisma/enums.js';
 import type { CreateCaseDocumentData } from './interfaces/create-case-document-data.interface.js';
 
 export const caseDocumentInclude = {
@@ -82,6 +83,15 @@ export class CaseDocumentsRepository {
       throw new CaseDocumentNotFoundError(caseId, documentId);
     }
     return storageKey;
+  }
+
+  /** Documents of a kind with their text, e.g. department replies for drafting the response. */
+  findWithTextByCase(caseId: string, kind: CaseDocumentKind): Promise<CaseDocumentDetailRecord[]> {
+    return this.prisma.caseDocument.findMany({
+      where: { caseId, kind, extractedText: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      include: caseDocumentInclude,
+    });
   }
 
   async findStorageKeysByCase(caseId: string): Promise<string[]> {

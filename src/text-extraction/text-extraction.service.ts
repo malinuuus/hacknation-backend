@@ -7,7 +7,7 @@ import { hasMeaningfulText, normalizeExtractedText } from './helpers/normalize-t
 import type { TextExtractionResult } from './interfaces/text-extraction-result.interface.js';
 
 /**
- * Reads the text layer of PDF and DOCX files, locally. Scanned PDFs have no
+ * Reads the text layer of PDF and DOCX files (and plain text files), locally. Scanned PDFs have no
  * text layer and come back as NO_TEXT (they need OCR). Never throws for a bad
  * file: extraction problems are reported as FAILED.
  */
@@ -22,7 +22,7 @@ export class TextExtractionService {
 
     let raw: string;
     try {
-      raw = type === DocumentFileType.Pdf ? await this.extractPdf(content) : await this.extractDocx(content);
+      raw = await this.extractRaw(content, type);
     } catch (error) {
       this.logger.warn(`Text extraction failed for ${type}: ${String(error)}`);
       return { status: TextExtractionStatus.FAILED, text: null };
@@ -32,6 +32,18 @@ export class TextExtractionService {
     return hasMeaningfulText(text)
       ? { status: TextExtractionStatus.EXTRACTED, text }
       : { status: TextExtractionStatus.NO_TEXT, text: null };
+  }
+
+  private extractRaw(content: Buffer, type: Exclude<DocumentFileType, DocumentFileType.Doc>): Promise<string> {
+    switch (type) {
+      case DocumentFileType.Pdf:
+        return this.extractPdf(content);
+      case DocumentFileType.Docx:
+        return this.extractDocx(content);
+      case DocumentFileType.Txt:
+        // Drop a UTF-8 byte order mark if the editor added one.
+        return Promise.resolve(content.toString('utf8').replace(/^\uFEFF/, ''));
+    }
   }
 
   private async extractPdf(content: Buffer): Promise<string> {

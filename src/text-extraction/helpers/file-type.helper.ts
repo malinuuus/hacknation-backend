@@ -8,6 +8,7 @@ const MIME_TYPES: Record<DocumentFileType, string> = {
   [DocumentFileType.Pdf]: 'application/pdf',
   [DocumentFileType.Docx]: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   [DocumentFileType.Doc]: 'application/msword',
+  [DocumentFileType.Txt]: 'text/plain; charset=utf-8',
 };
 
 /**
@@ -31,4 +32,29 @@ export function detectDocumentFileType(content: Buffer, fileName: string): Docum
 
 export function mimeTypeOf(type: DocumentFileType): string {
   return MIME_TYPES[type];
+}
+
+/**
+ * Like `detectDocumentFileType`, but also accepts plain UTF-8 text files
+ * (`.txt`), as the knowledge base takes notes and copied legal texts.
+ */
+export function detectKnowledgeFileType(content: Buffer, fileName: string): DocumentFileType | null {
+  const documentType = detectDocumentFileType(content, fileName);
+  if (documentType) {
+    return documentType;
+  }
+  return /\.txt$/i.test(fileName) && isUtf8Text(content) ? DocumentFileType.Txt : null;
+}
+
+/** Valid UTF-8 without NUL bytes, which binary files almost always contain. */
+function isUtf8Text(content: Buffer): boolean {
+  if (content.includes(0)) {
+    return false;
+  }
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(content);
+    return true;
+  } catch {
+    return false;
+  }
 }

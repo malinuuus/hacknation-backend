@@ -12,7 +12,7 @@ executors:
   docker-builder:
     docker:
       - image: cimg/base:2024.11
-    resource_class: medium
+    resource_class: arm.medium
 
 commands:
   install-dependencies:
@@ -39,7 +39,9 @@ commands:
   trust-server:
     description: Load the deploy SSH key and add the server to known_hosts
     steps:
-      - add_ssh_keys
+      - add_ssh_keys:
+          fingerprints:
+            - 'SHA256:iXlLpS8a/beAtGZDBUrUckkfls3ogY9eK9eMgVuaTZg'
       - run:
           name: Add SSH host to known_hosts
           command: |
@@ -128,7 +130,7 @@ jobs:
       - trust-server
       - run:
           name: Build docker image
-          command: docker build -t hacknation-backend:latest .
+          command: docker build --platform linux/arm64 -t hacknation-backend:latest .
       - run:
           name: Send docker image to the server
           command: |
@@ -144,16 +146,16 @@ jobs:
 
 workflows:
   build_and_test:
-    # unless:
-    #   equal: [main, << pipeline.git.branch >>]
+    unless:
+      equal: [main, << pipeline.git.branch >>]
     jobs:
       - build
       - lint
       - test
 
   deploy_production:
-    # when:
-    #   equal: [main, << pipeline.git.branch >>]
+    when:
+      equal: [main, << pipeline.git.branch >>]
     jobs:
       - build
       - lint

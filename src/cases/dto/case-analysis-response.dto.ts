@@ -88,7 +88,12 @@ export class CaseAnalysisResponseDto {
   @ApiProperty({ description: 'Name of the analysed file' })
   fileName: string;
 
-  @ApiProperty({ enum: TextExtractionStatus, enumName: 'TextExtractionStatus' })
+  @ApiProperty({
+    enum: TextExtractionStatus,
+    enumName: 'TextExtractionStatus',
+    description:
+      'OCR_EXTRACTED: transcribed by AI from a scan without a text layer, check it against the original; NO_TEXT: a scan that could not be transcribed',
+  })
   textExtractionStatus: TextExtractionStatus;
 
   @ApiPropertyOptional({

@@ -140,6 +140,7 @@ enum CaseDocumentKind {
 
 enum TextExtractionStatus {
   EXTRACTED
+  OCR_EXTRACTED
   NO_TEXT
   UNSUPPORTED
   FAILED

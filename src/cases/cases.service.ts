@@ -7,6 +7,7 @@ import { FileStorageService } from '../storage/file-storage.service.js';
 import { CaseDocumentsRepository } from './case-documents.repository.js';
 import { CaseDocumentsService } from './case-documents.service.js';
 import { type CaseDetailRecord, CasesRepository } from './cases.repository.js';
+import type { CaseCalendarQueryDto, CaseCalendarResponseDto } from './dto/case-calendar.dto.js';
 import type { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import type { CaseNumberCheckQueryDto, CaseNumberCheckResponseDto } from './dto/case-number-check.dto.js';
 import type { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
@@ -28,11 +29,14 @@ import { DepartmentNotFoundError } from './errors/department-not-found.error.js'
 import { SequenceNumberTakenError } from './errors/sequence-number-taken.error.js';
 import { formatCaseNumber, parseSequenceAndYear, sequenceNumberFromCaseNumber } from './helpers/case-number.helper.js';
 import { allowedTransitions, canChangeDeadline, canTransition } from './helpers/case-status.helper.js';
-import { formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './helpers/date-only.helper.js';
+import { daysBetween, formatDateOnly, parseDateOnly, todayInOfficeTimeZone } from './helpers/date-only.helper.js';
 import { computeDueDate, maxExtendedDueDate } from './helpers/deadline.helper.js';
 import type { CaseStatusChangeData } from './interfaces/case-status-change-data.interface.js';
 import type { UpdateCaseData } from './interfaces/update-case-data.interface.js';
 import { toCaseDetailDto, toCaseSummaryDto } from './mappers/case.mapper.js';
+
+/** Longest calendar range in days: a month grid needs at most 42, this also covers a quarter. */
+const MAX_CALENDAR_RANGE_DAYS = 93;
 
 @Injectable()
 export class CasesService {
@@ -107,6 +111,29 @@ export class CasesService {
     });
 
     return { items: items.map((item) => toCaseSummaryDto(item, today)), total };
+  }
+
+  /**
+   * Cases by the deadline in force, for the deadline calendar. Unlike `list`, not limited to a receipt year,
+   * so a case received in December with its deadline in January is found; answered cases are included.
+   */
+  async calendar(query: CaseCalendarQueryDto): Promise<CaseCalendarResponseDto> {
+    const from = this.parseDate(query.from, 'from');
+    const to = this.parseDate(query.to, 'to');
+    if (to < from) {
+      throw new BadRequestException('to cannot be before from');
+    }
+    if (daysBetween(from, to) + 1 > MAX_CALENDAR_RANGE_DAYS) {
+      throw new BadRequestException(`The range cannot be longer than ${MAX_CALENDAR_RANGE_DAYS} days`);
+    }
+
+    const today = todayInOfficeTimeZone();
+    const items = await this.casesRepository.findByDeadlineRange(from, to);
+    return {
+      from: formatDateOnly(from),
+      to: formatDateOnly(to),
+      items: items.map((item) => toCaseSummaryDto(item, today)),
+    };
   }
 
   async getById(id: string): Promise<CaseDetailDto> {

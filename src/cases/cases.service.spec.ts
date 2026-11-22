@@ -234,6 +234,54 @@ describe('CasesService', () => {
     });
   });
 
+  describe('calendar', () => {
+    it('finds cases by the deadline in force and maps them to summaries', async () => {
+      // arrange
+      const findByDeadlineRange = vi.fn().mockResolvedValue([caseRecord()]);
+      repository.findByDeadlineRange = findByDeadlineRange;
+      const dto = { from: '2026-11-01', to: '2026-11-30' };
+
+      // act
+      const result = await service.calendar(dto);
+
+      // assert
+      expect(findByDeadlineRange).toHaveBeenCalledWith(d('2026-11-01'), d('2026-11-30'));
+      expect(result.from).toBe('2026-11-01');
+      expect(result.to).toBe('2026-11-30');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ id: 'case-1', effectiveDueAt: '2026-11-23', daysLeft: 2 });
+    });
+
+    it('accepts a single-day range', async () => {
+      // arrange
+      repository.findByDeadlineRange = vi.fn().mockResolvedValue([]);
+      const dto = { from: '2026-11-23', to: '2026-11-23' };
+
+      // act
+      const result = await service.calendar(dto);
+
+      // assert
+      expect(result.items).toEqual([]);
+    });
+
+    it.each([
+      ['an impossible date', { from: '2026-02-30', to: '2026-03-31' }],
+      ['to before from', { from: '2026-12-01', to: '2026-11-30' }],
+      ['a range longer than 93 days', { from: '2026-01-01', to: '2026-04-30' }],
+    ])('rejects %s', async (_, dto) => {
+      // arrange
+      const findByDeadlineRange = vi.fn();
+      repository.findByDeadlineRange = findByDeadlineRange;
+
+      // act
+      const result = service.calendar(dto);
+
+      // assert
+      await expect(result).rejects.toThrow(BadRequestException);
+      expect(findByDeadlineRange).not.toHaveBeenCalled();
+    });
+  });
+
   describe('checkCaseNumber', () => {
     beforeEach(() => {
       repository.caseNumberExists = vi.fn().mockResolvedValue(false);

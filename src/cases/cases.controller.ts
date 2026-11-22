@@ -38,6 +38,7 @@ import type { AuthUser } from '../auth/interfaces/auth-user.interface.js';
 import { CaseAnalysisService } from './case-analysis.service.js';
 import { CasesService } from './cases.service.js';
 import { CaseAnalysisResponseDto } from './dto/case-analysis-response.dto.js';
+import { CaseCalendarQueryDto, CaseCalendarResponseDto } from './dto/case-calendar.dto.js';
 import { CaseNumberCheckQueryDto, CaseNumberCheckResponseDto } from './dto/case-number-check.dto.js';
 import { CaseDetailDto, CaseListResponseDto, CaseYearsResponseDto } from './dto/case-response.dto.js';
 import { ChangeCaseStatusDto } from './dto/change-case-status.dto.js';
@@ -127,6 +128,20 @@ export class CasesController {
   @ApiOkResponse({ type: CaseYearsResponseDto })
   getYears(): Promise<CaseYearsResponseDto> {
     return this.casesService.getYears();
+  }
+
+  @Get('calendar')
+  @ApiOperation({
+    summary: 'Cases by deadline for the calendar',
+    description:
+      'Every case whose deadline in force (the extended deadline, otherwise the statutory one) falls between ' +
+      '`from` and `to`, inclusive, regardless of the receipt year. Answered cases are included. ' +
+      'The range can be at most 93 days.',
+  })
+  @ApiOkResponse({ type: CaseCalendarResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid date, `to` before `from`, or range longer than 93 days' })
+  calendar(@Query() query: CaseCalendarQueryDto): Promise<CaseCalendarResponseDto> {
+    return this.casesService.calendar(query);
   }
 
   @Get('deadline-preview')

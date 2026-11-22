@@ -35,7 +35,8 @@ export class CaseDocumentDto {
   @ApiProperty({
     enum: TextExtractionStatus,
     enumName: 'TextExtractionStatus',
-    description: 'NO_TEXT usually means a scan without a text layer (needs OCR)',
+    description:
+      'OCR_EXTRACTED: transcribed by AI from a scan without a text layer, check it against the original; NO_TEXT: a scan that could not be transcribed',
   })
   textExtractionStatus: TextExtractionStatus;
 

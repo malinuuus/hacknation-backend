@@ -98,6 +98,12 @@ export class EnvironmentVariables {
   @Max(300000)
   OPENAI_TIMEOUT_MS: number = 45000;
 
+  /** Timeout of one request transcribing a scanned PDF without a text layer, in milliseconds. */
+  @IsInt()
+  @Min(1000)
+  @Max(300000)
+  OPENAI_OCR_TIMEOUT_MS: number = 60000;
+
   /** Number of knowledge base fragments passed to the model as context. */
   @IsInt()
   @Min(1)

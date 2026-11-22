@@ -1,0 +1,17 @@
+.git
+.circleci
+.vscode
+.idea
+node_modules
+dist
+coverage
+storage
+src/generated
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+docker-compose*.yaml
+docker-compose*.yml
+Dockerfile

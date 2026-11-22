@@ -1,0 +1,65 @@
+name: hacknation
+
+services:
+  backend:
+    image: hacknation-backend:latest
+    container_name: hacknation-backend
+    env_file: '.env'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}?schema=public
+      UPLOAD_DIR: /app/storage/uploads
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - uploads:/app/storage/uploads
+    networks:
+      - hacknation-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      # The app has no health route: any HTTP response (even 404) means it is up
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api').then(() => process.exit(0), () => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: hacknation-prod-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    ports:
+      # Bound to localhost only: reachable from CI through an SSH tunnel, not from the internet
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    networks:
+      - hacknation-network
+    restart: always
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  uploads:
+
+networks:
+  hacknation-network:
+    driver: bridge

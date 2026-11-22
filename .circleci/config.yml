@@ -1,0 +1,170 @@
+version: 2.1
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:24.22.1
+    resource_class: small
+    environment:
+      # prisma.config.ts requires DATABASE_URL; `prisma generate` (postinstall) never connects to it
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+  docker-builder:
+    docker:
+      - image: cimg/base:2024.11
+    resource_class: medium
+
+commands:
+  install-dependencies:
+    description: Install dependencies with pnpm, reusing the cached store
+    steps:
+      - run:
+          name: Enable pnpm
+          command: sudo corepack enable
+      - restore_cache:
+          keys:
+            - v1-pnpm-store-{{ checksum "pnpm-lock.yaml" }}
+            # fall back to the latest store if the lockfile changed
+            - v1-pnpm-store-
+      - run:
+          name: Install dependencies
+          command: |
+            pnpm config set store-dir ~/.pnpm-store
+            pnpm install --frozen-lockfile
+      - save_cache:
+          key: v1-pnpm-store-{{ checksum "pnpm-lock.yaml" }}
+          paths:
+            - ~/.pnpm-store
+
+  trust-server:
+    description: Load the deploy SSH key and add the server to known_hosts
+    steps:
+      - add_ssh_keys
+      - run:
+          name: Add SSH host to known_hosts
+          command: |
+            mkdir -p ~/.ssh
+            ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+  upload-server-config:
+    description: Upload docker-compose.prod.yml and write .env on the server
+    steps:
+      - run:
+          name: Upload docker-compose file
+          command: |
+            ssh "$SSH_USER@$SSH_HOST" "mkdir -p $APP_REMOTE_PATH"
+            scp docker-compose.prod.yml "$SSH_USER@$SSH_HOST:$APP_REMOTE_PATH/docker-compose.prod.yml"
+      - run:
+          name: Write .env file on the server
+          command: |
+            vars=(
+              PORT
+              POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_PORT
+              JWT_SECRET JWT_EXPIRES_IN
+              CASE_NUMBER_PREFIX UPLOAD_MAX_FILE_SIZE_MB
+              OPENAI_API_KEY OPENAI_MODEL OPENAI_EMBEDDING_MODEL OPENAI_TIMEOUT_MS
+              RAG_TOP_K RAG_CHUNK_SIZE RAG_CHUNK_OVERLAP
+            )
+            umask 077
+            : > /tmp/app.env
+            for name in "${vars[@]}"; do
+              if [ -n "${!name+x}" ]; then
+                printf '%s=%s\n' "$name" "${!name}" >> /tmp/app.env
+              fi
+            done
+            scp /tmp/app.env "$SSH_USER@$SSH_HOST:$APP_REMOTE_PATH/.env"
+            ssh "$SSH_USER@$SSH_HOST" "chmod 600 $APP_REMOTE_PATH/.env"
+            rm /tmp/app.env
+
+jobs:
+  build:
+    executor: node
+    steps:
+      - checkout
+      - install-dependencies
+      - run:
+          name: Build application
+          command: pnpm build
+
+  lint:
+    executor: node
+    steps:
+      - checkout
+      - install-dependencies
+      - run: pnpm lint
+
+  test:
+    executor: node
+    steps:
+      - checkout
+      - install-dependencies
+      - run: pnpm test
+
+  migrate-production-database:
+    executor: node
+    steps:
+      - checkout
+      - install-dependencies
+      - trust-server
+      - upload-server-config
+      - run:
+          name: Start the database
+          command: ssh "$SSH_USER@$SSH_HOST" "docker compose -f $APP_REMOTE_PATH/docker-compose.prod.yml up -d --wait postgres"
+      - run:
+          name: Open SSH tunnel to the database
+          command: ssh -fN -o ExitOnForwardFailure=yes -L "localhost:5433:localhost:${POSTGRES_PORT:-5432}" "$SSH_USER@$SSH_HOST"
+      - run:
+          name: Run migrations
+          command: |
+            DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5433/${POSTGRES_DB}?schema=public" \
+              pnpm prisma:deploy
+
+  deploy-production:
+    executor: docker-builder
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - trust-server
+      - run:
+          name: Build docker image
+          command: docker build -t hacknation-backend:latest .
+      - run:
+          name: Send docker image to the server
+          command: |
+            docker save hacknation-backend:latest | gzip | \
+              ssh "$SSH_USER@$SSH_HOST" "gunzip | docker load"
+      - run:
+          name: Start containers
+          command: |
+            ssh "$SSH_USER@$SSH_HOST" "docker compose -f $APP_REMOTE_PATH/docker-compose.prod.yml up -d --wait --remove-orphans"
+      - run:
+          name: Clean up old images
+          command: ssh "$SSH_USER@$SSH_HOST" "docker image prune -f"
+
+workflows:
+  build_and_test:
+    # unless:
+    #   equal: [main, << pipeline.git.branch >>]
+    jobs:
+      - build
+      - lint
+      - test
+
+  deploy_production:
+    # when:
+    #   equal: [main, << pipeline.git.branch >>]
+    jobs:
+      - build
+      - lint
+      - test
+      - migrate-production-database:
+          context: hacknation-backend-production
+          requires:
+            - build
+            - lint
+            - test
+      - deploy-production:
+          context: hacknation-backend-production
+          requires:
+            - migrate-production-database
